@@ -1,6 +1,6 @@
 # DeepSWE post-training smoke test on Ibex
 
-One **outer Codex `gpt-5-mini` training run with reasoning effort `low`**, fine-tuning
+One **outer Codex `gpt-6-sol` training run with reasoning effort `low`**, fine-tuning
 `Qwen/Qwen3-1.7B-Base`, followed by one evaluation of that checkpoint on the
 `fastapi-implicit-head-options` DeepSWE task. Codex is the training agent; the
 trained Qwen model is the agent operating on the evaluation repository.
@@ -18,12 +18,12 @@ bash src/commit_utils/commit_deepswe.sh
 The second command first caches a checksum-verified uv 0.9.7 binary locally on
 the submission node, then submits exactly one GPU training/evaluation job. If the task
 SIF is absent, it first submits a separate CPU image preparation job and makes
-the GPU job depend on its success. Both jobs have a 30-minute walltime; image
+the GPU job depend on its success. The GPU job has a 59-minute walltime; the CPU preparation job has 30 minutes. Image
 preparation does not consume the training job's GPU budget. Never build images
 inside the training container. A failed preparation cancels the dependent job.
 
 Defaults: `module load singularity/3.9.7`, automatic partition routing, one A100, 8 CPU cores,
-64 GiB RAM, 30 minutes total. The training agent gets 12 minutes (including CLI
+64 GiB RAM, 59 minutes total. The training agent gets 40 minutes (including CLI
 update and any exploratory evaluations), leaving time for model loading,
 rollout and the original verifier. This tests the plumbing, not convergence or
 full DeepSWE performance. The single task's official verifier allows 30 minutes
@@ -49,7 +49,7 @@ DEEPSWE_ACCOUNT=conf-cvpr-2026.11.23-ghanembs bash src/commit_utils/commit_deeps
 
 Overrides: `DEEPSWE_SINGULARITY_MODULE`, `DEEPSWE_BASE_MODEL`, `DEEPSWE_GRES`,
 `DEEPSWE_ACCOUNT`, `DEEPSWE_PARTITION` (normally unset on Ibex), `HF_HOME`,
-`DEEPSWE_RESULTS`, `DEEPSWE_TRAIN_SECONDS` (default 720, maximum 840),
+`DEEPSWE_RESULTS`, `DEEPSWE_TRAIN_SECONDS` (default 2400, maximum 2400),
 `CODEX_CLI_VERSION`, `POST_TRAIN_BENCH_SKIP_CLI_UPDATE`.
 The scaffold/chat template currently supports Qwen3 only. To build the local ML
 SIFs, run `singularity build containers/standard.sif containers/standard.def` and
@@ -72,8 +72,10 @@ uv pip install --python /home/ben/.venv/bin/python PACKAGE
 ```
 
 Both the launcher and Codex's shell environment policy select this Python and uv.
-`UV_CONSTRAINT` pins the preinstalled training stack to prevent accidental upgrades.
-Do not use `--system` or `--user`. New packages stay in the task's writable home;
+As in the original PostTrainBench prompt, installing or changing packages for
+experimentation is allowed. No additional package-version constraints or Python
+download restrictions are imposed. System directories are read-only; use the
+writable virtual environment. New packages stay in the task's writable home;
 the evaluation image remains independent, so checkpoints must load there without
 those additions. Environment setup failures stop the job before any model API call.
 To prepare the binary explicitly on a login node, run
@@ -131,7 +133,7 @@ A checkpoint must be a complete Hugging Face model and tokenizer; LoRA adapters
 must be merged. The agent prompt requires independent training data and prohibits
 using this held-out task or its derivatives for training. The test prompt is
 provided only as input to the existing contamination checker, matching PostTrain.
-No minimum score or positive training effect is assumed for a 12-minute run.
+No minimum score or positive training effect is assumed for a 40-minute training run.
 
 ## Validation
 

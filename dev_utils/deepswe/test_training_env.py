@@ -17,6 +17,7 @@ with tempfile.TemporaryDirectory(prefix='env-check-', dir=ROOT / 'dev_utils/deep
     config = tomllib.loads((home / '.codex/config.toml').read_text())
     policy = config['shell_environment_policy']['set']
     assert all(policy[key] == value for key, value in TRAIN_ENV.items())
+    assert 'UV_CONSTRAINT' not in policy and 'UV_PYTHON_DOWNLOADS' not in policy
     cmd = container(ROOT / 'containers/standard.sif', home, env=TRAIN_ENV)
     _, output = run(cmd + ['bash', '/home/ben/setup_training_env.sh'], timeout=120)
     print(output)
@@ -30,6 +31,8 @@ with tempfile.TemporaryDirectory(prefix='env-check-', dir=ROOT / 'dev_utils/deep
                          'Wheel-Version: 1.0\nRoot-Is-Purelib: true\nTag: py3-none-any\n')
         archive.writestr('deepswe_env_probe-1.0.dist-info/RECORD', '')
     (home / 'check.py').write_text('''import os, sys, torch, transformers, deepswe_env_probe
+assert 'UV_CONSTRAINT' not in os.environ
+assert 'UV_PYTHON_DOWNLOADS' not in os.environ
 assert os.getuid() != 0
 assert sys.executable == '/home/ben/.venv/bin/python', sys.executable
 assert deepswe_env_probe.VALUE == 42
