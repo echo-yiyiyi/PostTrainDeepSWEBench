@@ -4,4 +4,7 @@ set -euo pipefail
 source src/deepswe/common.sh
 [[ -n "${SLURM_JOB_ID:-}" ]] || { echo 'Run through commit_deepswe.sh / sbatch.' >&2; exit 1; }
 # Host Python orchestrates sibling Singularity executions, never nested containers.
-exec python3 src/deepswe/run.py
+# Fakeroot SIF extraction on the shared home filesystem can take minutes.
+export DEEPSWE_CONTAINER_TMPDIR="$(mktemp -d /tmp/deepswe-${SLURM_JOB_ID}.XXXXXX)"
+trap 'rm -rf -- "$DEEPSWE_CONTAINER_TMPDIR"' EXIT
+python3 src/deepswe/run.py

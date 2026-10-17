@@ -78,6 +78,7 @@ class RuntimeTests(unittest.TestCase):
                 reward = env.verify()
             self.assertEqual(reward['reward'], 0)
             shell = next(c for c in calls if c[-1] == 'git status')
+            self.assertTrue(all('--fakeroot' in c for c in calls))
             self.assertNotIn('/tests', ' '.join(shell))
             verifier = calls[-1]
             self.assertIn(f'{directory}/verifier_app:/app', verifier)

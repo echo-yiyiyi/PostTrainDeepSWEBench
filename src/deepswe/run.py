@@ -58,7 +58,7 @@ def main():
               'images': {k: str(v) for k, v in images.items()}}
     (result / 'run_config.json').write_text(json.dumps(config, indent=2))
     # Verify task image and no-network support before spending time training.
-    run(container(images['task'], result / 'preflight_home') +
+    run(container(images['task'], result / 'preflight_home', fakeroot=True) +
         ['bash', '-c', 'test -d /app/.git && python -c "import pytest, fastapi"'])
     for source, destination in [
         ('agents/codex/solve.sh', home / 'agent_solve.sh'),

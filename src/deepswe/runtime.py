@@ -21,8 +21,12 @@ BASE = '11614be9021aa4ac078d4d0693a8b5250a1010d8'
 
 def clean_env():
     # Singularity inherits explicit SINGULARITYENV_* even with --cleanenv.
-    return {k: v for k, v in os.environ.items()
-            if not k.startswith(('SINGULARITY', 'APPTAINER'))}
+    env = {k: v for k, v in os.environ.items()
+           if not k.startswith(('SINGULARITY', 'APPTAINER'))}
+    # Only forward the temporary directory created by our Slurm entry point.
+    if os.environ.get('DEEPSWE_CONTAINER_TMPDIR'):
+        env['SINGULARITY_TMPDIR'] = os.environ['DEEPSWE_CONTAINER_TMPDIR']
+    return env
 
 
 def run(cmd, timeout=120, check=True, stdout=None):
@@ -40,10 +44,13 @@ def run(cmd, timeout=120, check=True, stdout=None):
     return proc.returncode, output or ''
 
 
-def container(image, home, binds=(), network=False, gpu=False, pwd='/tmp', env=None):
+def container(image, home, binds=(), network=False, gpu=False, pwd='/tmp', env=None,
+              fakeroot=False):
     home.mkdir(parents=True, exist_ok=True)
     cmd = ['singularity', 'exec', '--containall', '--cleanenv', '--no-mount', 'hostfs',
            '--home', f'{home}:/home/ben', '--pwd', pwd, '--writable-tmpfs']
+    if fakeroot:
+        cmd += ['--fakeroot']
     if not network:
         cmd += ['--net', '--network', 'none']
     if gpu:
@@ -83,11 +90,11 @@ class TaskEnvironment:
 
     def extract(self, target, home):
         target.mkdir(parents=True, exist_ok=True)
-        run(container(self.image, home, [f'{target}:/export']) +
+        run(container(self.image, home, [f'{target}:/export'], fakeroot=True) +
             ['bash', '-c', 'cp -a /app/. /export/'], timeout=180)
 
     def shell(self, command):
-        cmd = container(self.image, self.home, [f'{self.app}:/app'], pwd='/app')
+        cmd = container(self.image, self.home, [f'{self.app}:/app'], pwd='/app', fakeroot=True)
         try:
             code, output = run(cmd + ['bash', '-c', command], timeout=60, check=False)
         except subprocess.TimeoutExpired:
@@ -99,7 +106,7 @@ class TaskEnvironment:
         artifacts = self.directory / 'artifacts'
         artifacts.mkdir()
         with (artifacts / 'model.patch').open('w') as patch:
-            run(container(self.image, self.home, [f'{self.app}:/app'], pwd='/app') +
+            run(container(self.image, self.home, [f'{self.app}:/app'], pwd='/app', fakeroot=True) +
                 ['git', '-c', 'safe.directory=/app', 'diff', '--binary', BASE, 'HEAD'], stdout=patch)
         app = self.directory / 'verifier_app'
         home = self.directory / 'verifier_home'
@@ -107,7 +114,7 @@ class TaskEnvironment:
         logs.mkdir()
         self.extract(app, home)
         cmd = container(self.image, home, [f'{app}:/app', f'{TASK / "tests"}:/tests:ro',
-            f'{artifacts}:/logs/artifacts:ro', f'{logs}:/logs/verifier'], pwd='/app')
+            f'{artifacts}:/logs/artifacts:ro', f'{logs}:/logs/verifier'], pwd='/app', fakeroot=True)
         with (logs / 'test-stdout.txt').open('w') as out:
             run(cmd + ['bash', '/tests/test.sh'], timeout=240, stdout=out)
         reward = json.loads((logs / 'reward.json').read_text())

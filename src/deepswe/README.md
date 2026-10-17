@@ -108,6 +108,25 @@ the verifier receives the original tests and read-only collected patch. The
 original `tests/test.sh` and `grader.py` are unmodified; binary reward, pass-to-pass
 and fail-to-pass results are preserved. No reference solution is vendored.
 
+Task and verifier containers use `--fakeroot` on Ibex compute nodes, where the
+account has subordinate UID/GID mappings. Login nodes may lack these mappings.
+This preserves the complete repository, including root-only `.pdm-build`, without
+excluding files or changing tests. Slurm entry points use job-local `/tmp` for
+Singularity's temporary image extraction; shared-filesystem extraction is slow.
+Training and model inference containers continue to run as the submitting user.
+
+To evaluate an existing checkpoint again without training or calling Codex:
+
+```bash
+bash src/commit_utils/commit_deepswe_eval.sh results/deepswe_smoke/53908391
+```
+
+This submits one A100 job with a 30-minute walltime and saves results beneath
+the source run in `reeval_JOB_ID/`. The original checkpoint is mounted read-only
+and the original run's logs and status are retained. Before deploying changes to
+task isolation, run `dev_utils/deepswe/test_task_fakeroot.sh` in a CPU Slurm job
+to check full copying, network/credential isolation, persistence and fresh workspaces.
+
 This is a native Singularity adapter for **this single Harbor-format task**, not
 a generic Pier backend. Other tasks may require extra writable paths, services,
 network policies or collect hooks and must be adapted before being added. The
