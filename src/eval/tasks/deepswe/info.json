@@ -1,0 +1,10 @@
+{
+  "benchmark": "DeepSWE single-task smoke test",
+  "required_api_keys": [],
+  "disallowed_data_examples": ["DeepSWE task prompts, reference solutions, hidden tests, or derivatives of them"],
+  "allowed_data_examples": ["Independently sourced or synthesized software engineering training examples"],
+  "task_id": "fastapi-implicit-head-options",
+  "upstream_commit": "0b9fabbb63b9104d678fe965e1632f2dd9eaa2ea",
+  "runtime": "src/deepswe/job.sh",
+  "smoke_only": true
+}
