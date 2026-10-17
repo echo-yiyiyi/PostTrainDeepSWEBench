@@ -206,3 +206,8 @@ directories (final_model2/, checkpoints) lose their weights but keep their small
 - codex must not read stdin in the verifier: codex exec appends piped stdin to its prompt and
   waits for EOF, and harbor's exec stdin never closes. test.sh runs every judge with stdin closed
   (apptainer closes stdin, so condor is unaffected).
+
+DeepSWE is currently supported only by the Ibex/Singularity launcher in
+`src/deepswe/`. Its host-side task-container bridge is not available in the
+Modal adapter, so it is excluded from Harbor task generation. No zeroshot
+baseline is fabricated for this single-task integration test.

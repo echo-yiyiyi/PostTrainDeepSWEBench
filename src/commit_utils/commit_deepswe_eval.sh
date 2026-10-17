@@ -9,7 +9,7 @@ source_run="$(realpath -- "$1")"
 }
 mkdir -p logs
 args=(--job-name=deepswe-reeval --nodes=1 --ntasks=1 --cpus-per-task=8
-      --mem=64G --gres="${DEEPSWE_GRES:-gpu:a100:1}" --time=00:30:00
+      --mem=64G --gres="${DEEPSWE_GRES:-gpu:a100:1}" --time="${DEEPSWE_EVAL_WALLTIME:-01:30:00}"
       --chdir="$DEEPSWE_ROOT" --output=logs/deepswe_reeval_%j.out
       --error=logs/deepswe_reeval_%j.err)
 [[ -z "${DEEPSWE_ACCOUNT:-}" ]] || args+=(--account="$DEEPSWE_ACCOUNT")

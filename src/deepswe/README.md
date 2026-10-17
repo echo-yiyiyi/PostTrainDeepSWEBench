@@ -2,9 +2,31 @@
 
 One **outer Codex `gpt-6-sol` training run with reasoning effort `low`**, fine-tuning
 `Qwen/Qwen3-1.7B-Base`, followed by one evaluation of that checkpoint on the
-`fastapi-implicit-head-options` DeepSWE task. Codex is the training agent; the
+`true-myth-iterable-collection-combinators` DeepSWE task. Codex is the training agent; the
 trained Qwen model is the agent operating on the evaluation repository.
 This is not a direct evaluation of Codex's repository-solving ability.
+
+## Active special teaching experiment
+
+This run intentionally teaches the exact true-myth task. It is **not a held-out
+benchmark evaluation**. The complete task question is included verbatim in
+`prompts/teach_true_myth.txt`; `prompts/teach_true_myth.rendered.txt` is the actual
+60-minute prompt for Qwen/Qwen3-1.7B-Base.
+
+For this special prompt only, the user authorizes use of the official reference
+solution and tests. At training startup they are copied to
+`/home/ben/task/reference_materials/{solution,tests}`. Codex may use those files to
+build task-specific training data. These helper files are not mounted into the
+small model's task container during final evaluation: it must produce the edits
+from its trained weights. Normal prompting and its data rules remain available;
+`prepare_teaching_materials(..., mode='general')` copies no reference materials.
+
+Results record `experiment_mode=task_specific_training`,
+`training_task_exposed=true`, `reference_solution_exposed=true`,
+`verifier_tests_exposed=true`, and `held_out_evaluation=false`. Shared judges still
+run; contamination findings are expected for this deliberate exposure and must
+not be presented as a clean, held-out benchmark score. The official verifier and
+reference patch are copied without modification from the pinned source task.
 
 ## Submit
 
@@ -18,27 +40,25 @@ bash src/commit_utils/commit_deepswe.sh
 The second command first caches a checksum-verified uv 0.9.7 binary locally on
 the submission node, then submits exactly one GPU training/evaluation job. If the task
 SIF is absent, it first submits a separate CPU image preparation job and makes
-the GPU job depend on its success. The GPU job has an 80-minute walltime; the CPU preparation job has 30 minutes. Image
+the GPU job depend on its success. The GPU job has a configurable total walltime; the CPU preparation job has 30 minutes. Image
 preparation does not consume the training job's GPU budget. Never build images
 inside the training container. A failed preparation cancels the dependent job.
 
 Defaults: `module load singularity/3.9.7`, automatic partition routing, one A100, 8 CPU cores,
-64 GiB RAM, 80 minutes total. The training agent gets 60 minutes (including CLI
-update and any exploratory evaluations), leaving time for model loading,
-rollout and the original verifier. This tests the plumbing, not convergence or
-full DeepSWE performance. The single task's official verifier allows 30 minutes
-by itself; this smoke harness caps it at 4 minutes and the entire evaluation at
-12 minutes. Timeout/infrastructure failure produces no fabricated zero score.
+64 GiB RAM. The training agent gets 60 minutes (including CLI
+update and any exploratory evaluations). Independent review and final evaluation
+run afterward, outside that budget. This is a single-task integration test, not
+a full DeepSWE score. The official task deadlines are preserved: 3 hours for the
+model's task rollout and 30 minutes for the verifier.
 
 Configuration is read only from this checkout's `.env`. There is no fallback
 into another checkout. Copy `src/deepswe/config.env.example` to `.env` if needed
-and set `OPENAI_API_KEY` privately there. The host passes this key as
-`CODEX_API_KEY` only to outer Codex, never to the model's shell or verifier.
+and set `OPENAI_API_KEY` privately there. The host passes this key through the relevant Codex authentication variables only to outer Codex and the independent judges, never to the model's shell or verifier.
 
 Images, cache and outputs must resolve inside this repository or its explicitly
 configured external storage roots. Paths into unrelated checkouts are rejected.
 The default images are `containers/standard.sif`, `containers/vllm_debug.sif`, and
-`containers/deepswe-fastapi.sif`. Build/provision the first two before submission;
+`containers/deepswe-true-myth.sif`. Build/provision the first two before submission;
 the task image is pulled automatically if absent. No image is borrowed from
 another checkout.
 
@@ -157,7 +177,7 @@ To evaluate an existing checkpoint again without training or calling Codex:
 bash src/commit_utils/commit_deepswe_eval.sh results/deepswe_smoke/53908391
 ```
 
-This submits one A100 job with a 30-minute walltime and saves results beneath
+This submits one A100 job with a configurable final-evaluation walltime and saves results beneath
 the source run in `reeval_JOB_ID/`. The original checkpoint is mounted read-only
 and the original run's logs and status are retained. Before deploying changes to
 task isolation, run `dev_utils/deepswe/test_task_fakeroot.sh` in a CPU Slurm job
@@ -176,18 +196,35 @@ paths; custom installations must check admin binds do not expose held-out files.
 - `training_home/task/final_model/`: submitted model, with tokenizer and full weights.
 - `solve_out.txt`, `prompt.txt`, `training_home/cli_version.txt`: training agent provenance.
 - `eval_*/`: Inspect trajectories, committed patch, fresh workspaces, verifier logs/reward.
-- `metrics.json`: only written after successful final evaluation; includes `smoke_only=true`.
+- `metrics.json`: only written after successful final evaluation; uses the shared per-seed aggregation schema.
 
-The long reward-hacking judge suite is **not run** in this short smoke path.
-Do not treat these outputs as audited PostTrainBench results or feed them into
-its official aggregation. The ordinary Condor runner, other benchmarks and its
-judge requirements remain unchanged. Use the dedicated commit script, not
-`commit.sh` or the generic `run_final_eval.sh`, for this benchmark.
+Training is capped at 60 minutes, including exploratory evaluations. After training,
+the trace is parsed and the shared `run_all_judges` runs all four judge categories
+(including all three contamination slots), then `run_final_eval.sh` runs the
+single seed 72332. Judge model, reasoning effort, CLI pins and policies come from
+the shared judge configurations; they are independent of the training agent's low
+effort. Missing verdicts retain the upstream warning/continue behavior and must
+not be interpreted as passing an audit.
+
+The final evaluation uses the shared 4/3/2 retry cascade at 4000/3000/2000 output
+tokens. A successful score of zero is retained, not retried as an infrastructure
+failure. Sampling uses the model defaults. There is no custom 12-turn cap, 8192
+context cap or manual history truncation. The task's agent and verifier deadlines
+are 10800 and 1800 seconds. These are evaluation deadlines, outside the 60-minute
+training budget.
+
+`DEEPSWE_JOB_WALLTIME` and `DEEPSWE_EVAL_WALLTIME` both default to `01:30:00`.
+Training remains capped at 60 minutes. Review and final evaluation share the time
+remaining in the 90-minute allocation; this budget can interrupt an unfinished
+review or rollout. The pipeline does not silently extend the Slurm request or
+turn incomplete evaluation into a zero score.
+Use the dedicated commit script rather than the generic Condor submission.
+The directory name `deepswe_smoke` is retained for existing paths; this remains a
+single-task experiment, not a full DeepSWE benchmark result.
 
 A checkpoint must be a complete Hugging Face model and tokenizer; LoRA adapters
-must be merged. The agent prompt requires independent training data and prohibits
-using this held-out task or its derivatives for training. The test prompt is
-provided only as input to the existing contamination checker, matching PostTrain.
+must be merged. The active prompt is the special teaching experiment described below; the
+ordinary shared prompt still prohibits test-derived training data.
 No minimum score or positive training effect is assumed for a 60-minute training run.
 
 ## Validation
@@ -216,8 +253,10 @@ Sources: [Ibex](https://docs.hpc.kaust.edu.sa/systems/ibex/),
 [Inspect solvers](https://inspect.aisi.org.uk/solvers.html).
 Vendored task: `datacurve-ai/deep-swe`, commit
 `0b9fabbb63b9104d678fe965e1632f2dd9eaa2ea`, Apache-2.0, license retained in
-`src/eval/tasks/deepswe/harbor_task/LICENSE`. Upstream tests are unchanged;
-`solution/` is intentionally excluded.
+`src/eval/tasks/deepswe/true_myth_task/LICENSE`. Upstream tests are unchanged;
+the true-myth reference solution is included only under
+`src/deepswe/teaching_materials/true_myth/solution` for the explicitly authorized
+teaching experiment. The older FastAPI task files are retained for provenance.
 
 ### Ibex storage
 
@@ -234,3 +273,23 @@ storage. Build/extraction temporary files still use compute-node `/tmp`.
 Local `results`, `.cache`, and `containers/*.sif` symlinks preserve old paths.
 The repository and credentials stay in this checkout; no sibling checkout is
 used. Without explicit storage configuration, paths default to this checkout.
+
+### Framework parity
+
+The ordinary prompt remains available via `make_general_prompt`. The active
+teaching experiment uses its own explicit prompt. The launcher uses shared templates, trace parser,
+system monitor, judge policies and final-evaluation retry/aggregation code.
+Hugging Face cache writes use a private FUSE overlay, as in the original runner;
+the shared cache is only the read-only lower layer. The FUSE mountpoint is on
+node-local /tmp because Ibex forbids FUSE mounts on its shared filesystem;
+private cache data remains in the configured results storage. Training cache changes are
+not carried into fixed-image evaluation.
+
+Remaining intentional differences are the Slurm/module/Singularity/fakeroot
+launcher, writable Python venv needed on Ibex, configured external storage,
+the DeepSWE host bridge and separate task/verifier containers, and the requested
+60-minute training / 90-minute Slurm / one-task / one-seed / gpt-6-sol-low experiment,
+and the explicitly requested teaching prompt with reference and test exposure. The task
+verifier itself is unchanged. This dedicated experiment's result directory
+layout is retained; it is not registered as a scored full benchmark in the
+upstream collection or Modal task generator.

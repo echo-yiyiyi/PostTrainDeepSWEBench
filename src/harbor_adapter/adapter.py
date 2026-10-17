@@ -59,6 +59,9 @@ def _discover_benchmarks() -> dict[str, BenchmarkInfo]:
     found = {}
     for info_file in sorted(TASKS_ROOT.glob("*/info.json")):
         task_id = info_file.parent.name
+        if task_id == "deepswe":
+            # This task needs the Ibex host bridge; the Modal adapter cannot run it.
+            continue
         if task_id in SKIP_BENCHMARKS:
             continue
         info = json.loads(info_file.read_text(encoding="utf-8"))

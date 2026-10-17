@@ -12,17 +12,17 @@ from runtime import BASE, TaskEnvironment, container, run
 with tempfile.TemporaryDirectory(prefix='task-fakeroot-', dir=ROOT / 'results') as tmp:
     directory = Path(tmp)
     task = TaskEnvironment(directory, Path(os.environ['DEEPSWE_TASK_SIF']))
-    print('PASS: complete /app copied, without excluding .pdm-build', flush=True)
+    print('PASS: complete /app copied, including node_modules', flush=True)
     check = task.shell(f'''set -e
 test "$(id -u)" = 0
-test -r /app/.pdm-build/fastapi.pth
+test -r /app/package.json
 test ! -e /tests
 test -z "${{OPENAI_API_KEY:-}}${{CODEX_API_KEY:-}}${{DEEPSWE_EVAL_TOKEN:-}}"
 test "$(git rev-parse HEAD)" = {BASE}
 git diff --exit-code HEAD
-python -c 'import pathlib; routes=pathlib.Path("/proc/net/route").read_text().splitlines()[1:]; assert not any(line.split()[1] == "00000000" for line in routes)'
+python3 -c 'import pathlib; routes=pathlib.Path("/proc/net/route").read_text().splitlines()[1:]; assert not any(line.split()[1] == "00000000" for line in routes)'
 printf persistent > /app/.deepswe_probe
-python -m pytest -o filterwarnings='ignore::PendingDeprecationWarning' tests/test_default_response_class.py -q -p no:cacheprovider
+npx vitest run test/unit.test.ts --coverage=false
 ''')
     assert check['exit_code'] == 0, check
     print(check['output'], flush=True)
@@ -33,5 +33,5 @@ python -m pytest -o filterwarnings='ignore::PendingDeprecationWarning' tests/tes
     home = directory / 'verifier_home'
     task.extract(app, home)
     run(container(task.image, home, [f'{app}:/app'], pwd='/app') +
-        ['bash', '-c', 'test ! -e .deepswe_probe && test -r .pdm-build/fastapi.pth && git diff --exit-code HEAD'])
+        ['bash', '-c', 'test ! -e .deepswe_probe && test -r package.json && git diff --exit-code HEAD'])
     print('PASS: separate verifier workspace starts pristine with the complete repository', flush=True)
