@@ -32,6 +32,6 @@ python -m pytest -o filterwarnings='ignore::PendingDeprecationWarning' tests/tes
     app = directory / 'verifier_app'
     home = directory / 'verifier_home'
     task.extract(app, home)
-    run(container(task.image, home, [f'{app}:/app'], pwd='/app', fakeroot=True) +
+    run(container(task.image, home, [f'{app}:/app'], pwd='/app') +
         ['bash', '-c', 'test ! -e .deepswe_probe && test -r .pdm-build/fastapi.pth && git diff --exit-code HEAD'])
     print('PASS: separate verifier workspace starts pristine with the complete repository', flush=True)

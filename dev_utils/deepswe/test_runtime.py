@@ -58,10 +58,18 @@ class RuntimeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             cmd = container('task.sif', Path(tmp), ['/tmp/app:/app'])
             self.assertIn('--containall', cmd)
+            self.assertIn('--fakeroot', cmd)
             self.assertIn('--cleanenv', cmd)
             self.assertEqual(cmd[cmd.index('--network') + 1], 'none')
             self.assertNotIn('--nv', cmd)
             self.assertNotIn('/tests', ' '.join(cmd))
+
+    def test_gpu_containers_also_use_fakeroot(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cmd = container('model.sif', Path(tmp), network=True, gpu=True)
+            self.assertIn('--fakeroot', cmd)
+            self.assertIn('--nv', cmd)
+            self.assertNotIn('--net', cmd)
 
     def test_verifier_gets_fresh_app_and_readonly_tests(self):
         with tempfile.TemporaryDirectory() as tmp:

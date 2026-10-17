@@ -59,7 +59,7 @@ unprivileged `singularity pull docker://...` is sufficient for the task image.
 
 ## Execution and isolation
 
-The training environment needs no root access. `prepare_uv.sh` downloads the
+The training environment needs no host root privileges. `prepare_uv.sh` downloads the
 pinned x86_64 Linux binary into `.cache/deepswe-tools/` (gitignored). Each run
 copies it into its own `/home/ben/.local/bin`. Before starting Codex, the harness
 creates `/home/ben/.venv` inside the training image with `--system-site-packages`,
@@ -74,8 +74,8 @@ uv pip install --python /home/ben/.venv/bin/python PACKAGE
 Both the launcher and Codex's shell environment policy select this Python and uv.
 As in the original PostTrainBench prompt, installing or changing packages for
 experimentation is allowed. No additional package-version constraints or Python
-download restrictions are imposed. System directories are read-only; use the
-writable virtual environment. New packages stay in the task's writable home;
+download restrictions are imposed. The base SIF remains immutable; use the
+persistent writable virtual environment. New packages stay in the task's writable home;
 the evaluation image remains independent, so checkpoints must load there without
 those additions. Environment setup failures stop the job before any model API call.
 To prepare the binary explicitly on a login node, run
@@ -108,12 +108,14 @@ the verifier receives the original tests and read-only collected patch. The
 original `tests/test.sh` and `grader.py` are unmodified; binary reward, pass-to-pass
 and fail-to-pass results are preserved. No reference solution is vendored.
 
-Task and verifier containers use `--fakeroot` on Ibex compute nodes, where the
+All DeepSWE containers (training agent, model inference, task and verifier) use
+`--fakeroot` on Ibex compute nodes, where the
 account has subordinate UID/GID mappings. Login nodes may lack these mappings.
 This preserves the complete repository, including root-only `.pdm-build`, without
 excluding files or changing tests. Slurm entry points use job-local `/tmp` for
 Singularity's temporary image extraction; shared-filesystem extraction is slow.
-Training and model inference containers continue to run as the submitting user.
+Processes see UID 0 inside; on the host they remain mapped to the submitting user.
+This is an explicit DeepSWE runtime choice; the original PostTrain runners are unchanged.
 
 To evaluate an existing checkpoint again without training or calling Codex:
 
@@ -161,15 +163,19 @@ python3 -m unittest discover -s dev_utils/deepswe -p test_runtime.py -v
 python3 -m compileall -q src/deepswe src/eval/tasks/deepswe
 bash -n src/commit_utils/commit_deepswe.sh src/deepswe/*.sh
 module load singularity/3.9.7
+# The following image tests require a compute-node allocation, not a login node.
+# Set DEEPSWE_CONTAINER_TMPDIR to a job-owned temporary directory under /tmp.
 python3 dev_utils/deepswe/test_prompt_transport.py
 python3 dev_utils/deepswe/test_training_env.py
 ```
 
 `dev_utils/deepswe/test_inspect.py` additionally exercises the real Inspect solver
 and scorer API in the existing evaluation image with a mock model (no GPU/API).
-`test_training_env.py` requires the cached uv binary and checks non-root setup,
+`test_training_env.py` requires the cached uv binary and checks fakeroot setup,
 Codex shell PATH, inherited imports, and an offline package installation into the
 virtual environment, without a GPU or model API.
+`test_gpu_fakeroot.py` checks CUDA tensor operations in both ML images and the
+training virtual environment under fakeroot; it requires one allocated GPU.
 
 Sources: [Ibex](https://docs.hpc.kaust.edu.sa/systems/ibex/),
 [Singularity on Ibex](https://docs.hpc.kaust.edu.sa/soft_env/prog_env/containers/mpi.html),

@@ -53,12 +53,13 @@ def main():
     base = os.environ.get('DEEPSWE_BASE_MODEL', 'Qwen/Qwen3-1.7B-Base')
     config = {'agent': 'codex', 'agent_config': 'gpt-6-sol', 'model_to_train': base,
               'reasoning_effort': 'low',
+              'container_fakeroot': True,
               'benchmark': 'deepswe', 'num_tasks': 1, 'seed': 72332,
               'smoke_only': True, 'integrity_judges': 'not run in 59-minute smoke test',
               'images': {k: str(v) for k, v in images.items()}}
     (result / 'run_config.json').write_text(json.dumps(config, indent=2))
     # Verify task image and no-network support before spending time training.
-    run(container(images['task'], result / 'preflight_home', fakeroot=True) +
+    run(container(images['task'], result / 'preflight_home') +
         ['bash', '-c', 'test -d /app/.git && python -c "import pytest, fastapi"'])
     for source, destination in [
         ('agents/codex/solve.sh', home / 'agent_solve.sh'),
@@ -95,8 +96,9 @@ You have {train_seconds // 60} minutes, on the GPU assigned by Slurm (inspect nv
 Check remaining time with bash timer.sh. If using LoRA, merge adapters into
 full model weights. Do not submit an adapter-only checkpoint. Save tokenizer files.
 Python uses /home/ben/.venv, a writable virtual environment that inherits the
-image's preinstalled training packages. You have no root access; system package
-directories are read-only. For installation use, for example:
+image's preinstalled training packages. The container runs with fakeroot (UID 0
+inside, your ordinary account outside). The base SIF is immutable; the virtual
+environment is writable and persists across commands. For installation use:
 uv pip install --python /home/ben/.venv/bin/python PACKAGE
 Installing or changing packages for experimentation is allowed. Ensure final_model
 works with the starting packages in the fixed evaluation image.

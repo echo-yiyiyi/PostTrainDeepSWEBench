@@ -1,5 +1,5 @@
 #!/bin/bash
-# Runs inside the training SIF as the submitting user, before Codex starts.
+# Runs with container fakeroot, mapped to the submitting user on the host.
 set -euo pipefail
 export VIRTUAL_ENV=/home/ben/.venv
 export PATH="$VIRTUAL_ENV/bin:/home/ben/.local/bin:$PATH"

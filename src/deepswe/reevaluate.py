@@ -24,7 +24,7 @@ def main():
               for name in ('eval', 'task')}
     (result / 'run_config.json').write_text(json.dumps({
         'source_run': str(source), 'checkpoint': str(checkpoint), 'seed': 72332,
-        'evaluation_only': True, 'task_fakeroot': True, 'smoke_only': True,
+        'evaluation_only': True, 'container_fakeroot': True, 'smoke_only': True,
         'images': {key: str(value) for key, value in images.items()}}, indent=2))
     bridge = Bridge(home, result, images)
     bridge.accept_agent = False

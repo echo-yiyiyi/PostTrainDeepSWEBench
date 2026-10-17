@@ -1,11 +1,14 @@
-"""Run on a host with Singularity loaded. No GPU, network or model API needed."""
+"""Run on a compute node with fakeroot configured. No GPU/network/model API needed."""
 import json
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / 'src/deepswe'))
+from runtime import container, clean_env
 with tempfile.TemporaryDirectory(prefix='prompt-check-', dir=ROOT / 'dev_utils/deepswe') as tmp:
     home = Path(tmp)
     prompt = ('First line\nDeepSWE single task; 12 minutes.\n'
@@ -15,10 +18,8 @@ with tempfile.TemporaryDirectory(prefix='prompt-check-', dir=ROOT / 'dev_utils/d
     shutil.copy2(ROOT / 'src/deepswe/start_agent.sh', home / 'start_agent.sh')
     (home / 'agent_solve.sh').write_text(
         "#!/bin/bash\npython -c 'import json, os; print(json.dumps(os.environ[\"PROMPT\"]))'\n")
-    result = subprocess.run([
-        'singularity', 'exec', '--containall', '--cleanenv', '--net', '--network', 'none',
-        '--home', f'{home}:/home/ben', '--pwd', '/home/ben',
-        str(ROOT / 'containers/standard.sif'), 'bash', '/home/ben/start_agent.sh',
-    ], capture_output=True, text=True, check=True, timeout=60)
+    result = subprocess.run(container(ROOT / 'containers/standard.sif', home, pwd='/home/ben') +
+        ['bash', '/home/ben/start_agent.sh'], env=clean_env(),
+        capture_output=True, text=True, check=True, timeout=180)
     assert json.loads(result.stdout) == prompt, result.stdout
     print('PASS: full multiline prompt and literal shell characters preserved at agent entry.')

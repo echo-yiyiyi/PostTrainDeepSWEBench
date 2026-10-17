@@ -1,4 +1,4 @@
-"""Real non-root SIF check: no GPU, network, credentials or model API calls."""
+"""Real fakeroot SIF check on a compute node: no GPU, network or model API calls."""
 from pathlib import Path
 import sys
 import tempfile
@@ -33,12 +33,12 @@ with tempfile.TemporaryDirectory(prefix='env-check-', dir=ROOT / 'dev_utils/deep
     (home / 'check.py').write_text('''import os, sys, torch, transformers, deepswe_env_probe
 assert 'UV_CONSTRAINT' not in os.environ
 assert 'UV_PYTHON_DOWNLOADS' not in os.environ
-assert os.getuid() != 0
+assert os.getuid() == 0
 assert sys.executable == '/home/ben/.venv/bin/python', sys.executable
 assert deepswe_env_probe.VALUE == 42
 assert deepswe_env_probe.__file__.startswith('/home/ben/.venv/')
 assert not torch.__file__.startswith('/home/ben/.venv/'), torch.__file__
-print('PASS: non-root shell uses venv; torch inherited; extra package installed locally.')
+print('PASS: fakeroot shell uses venv; torch inherited; extra package installed locally.')
 ''')
     # Apply the actual generated Codex shell policy, including its PATH overrides.
     shell = container(ROOT / 'containers/standard.sif', home) + ['env'] + [
