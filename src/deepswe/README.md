@@ -15,7 +15,8 @@ bash src/commit_utils/commit_deepswe.sh --dry-run
 bash src/commit_utils/commit_deepswe.sh
 ```
 
-The second command submits exactly one GPU training/evaluation job. If the task
+The second command first caches a checksum-verified uv 0.9.7 binary locally on
+the submission node, then submits exactly one GPU training/evaluation job. If the task
 SIF is absent, it first submits a separate CPU image preparation job and makes
 the GPU job depend on its success. Both jobs have a 30-minute walltime; image
 preparation does not consume the training job's GPU budget. Never build images
@@ -57,6 +58,26 @@ host with suitable privileges, after loading the Singularity module. Ibex's
 unprivileged `singularity pull docker://...` is sufficient for the task image.
 
 ## Execution and isolation
+
+The training environment needs no root access. `prepare_uv.sh` downloads the
+pinned x86_64 Linux binary into `.cache/deepswe-tools/` (gitignored). Each run
+copies it into its own `/home/ben/.local/bin`. Before starting Codex, the harness
+creates `/home/ben/.venv` inside the training image with `--system-site-packages`,
+checks training imports and GPU availability, and records `training_env.log`.
+The virtual environment reuses the image's PyTorch and other training packages;
+additional packages are installed with:
+
+```bash
+uv pip install --python /home/ben/.venv/bin/python PACKAGE
+```
+
+Both the launcher and Codex's shell environment policy select this Python and uv.
+`UV_CONSTRAINT` pins the preinstalled training stack to prevent accidental upgrades.
+Do not use `--system` or `--user`. New packages stay in the task's writable home;
+the evaluation image remains independent, so checkpoints must load there without
+those additions. Environment setup failures stop the job before any model API call.
+To prepare the binary explicitly on a login node, run
+`bash src/deepswe/prepare_uv.sh`; it is reused across submissions.
 
 The host Python process owns all Singularity launches. The training container
 reads its full prompt from `training_prompt.txt` through `start_agent.sh`;
@@ -120,10 +141,14 @@ python3 -m compileall -q src/deepswe src/eval/tasks/deepswe
 bash -n src/commit_utils/commit_deepswe.sh src/deepswe/*.sh
 module load singularity/3.9.7
 python3 dev_utils/deepswe/test_prompt_transport.py
+python3 dev_utils/deepswe/test_training_env.py
 ```
 
 `dev_utils/deepswe/test_inspect.py` additionally exercises the real Inspect solver
 and scorer API in the existing evaluation image with a mock model (no GPU/API).
+`test_training_env.py` requires the cached uv binary and checks non-root setup,
+Codex shell PATH, inherited imports, and an offline package installation into the
+virtual environment, without a GPU or model API.
 
 Sources: [Ibex](https://docs.hpc.kaust.edu.sa/systems/ibex/),
 [Singularity on Ibex](https://docs.hpc.kaust.edu.sa/soft_env/prog_env/containers/mpi.html),

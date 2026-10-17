@@ -21,6 +21,7 @@ for path in "$DEEPSWE_TRAIN_SIF" "$DEEPSWE_EVAL_SIF"; do
     [[ -f "$path" ]] || { echo "Missing image: $path. See src/deepswe/README.md." >&2; exit 1; }
 done
 [[ -n "${OPENAI_API_KEY:-}" ]] || { echo 'OPENAI_API_KEY is required in .env (same as agent=codex).' >&2; exit 1; }
+bash src/deepswe/prepare_uv.sh
 if [[ ! -f "$DEEPSWE_TASK_SIF" ]]; then
     prepare_id="${DEEPSWE_PREPARE_JOB_ID:-}"
     if [[ -z "$prepare_id" ]]; then

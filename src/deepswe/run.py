@@ -4,11 +4,40 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import time
 
 from runtime import ROOT, TASK, Bridge, container, run
+
+
+TRAIN_PATH = ('/home/ben/.venv/bin:/home/ben/.local/bin:/usr/local/nvidia/bin:'
+              '/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/bin')
+TRAIN_ENV = {'PATH': TRAIN_PATH, 'VIRTUAL_ENV': '/home/ben/.venv',
+             'UV_PYTHON_DOWNLOADS': 'never',
+             'UV_CONSTRAINT': '/home/ben/training-constraints.txt',
+             'PYTHONNOUSERSITE': '1'}
+
+
+def prepare_training_home(home):
+    uv = ROOT / '.cache/deepswe-tools/uv-0.9.7/uv'
+    if not uv.is_file():
+        raise RuntimeError('Run bash src/deepswe/prepare_uv.sh on the submission node first')
+    (home / '.local/bin').mkdir(parents=True, exist_ok=True)
+    shutil.copy2(uv, home / '.local/bin/uv')
+    shutil.copy2(ROOT / 'src/deepswe/setup_training_env.sh', home / 'setup_training_env.sh')
+    shutil.copytree(ROOT / 'containers/other_home_data/.codex', home / '.codex')
+    codex_config = home / '.codex/config.toml'
+    # Update the shell policy too: Codex overrides its inherited environment here.
+    config = codex_config.read_text()
+    config, count = re.subn(r'\bPATH = "[^"]*"', 'PATH = ' + json.dumps(TRAIN_PATH), config)
+    if count != 1:
+        raise RuntimeError('Expected exactly one Codex shell PATH setting')
+    additions = ', '.join(f'{key} = {json.dumps(value)}' for key, value in TRAIN_ENV.items()
+                          if key not in ('PATH', 'PYTHONNOUSERSITE'))
+    config = config.replace('set = {', 'set = {' + additions + ', ', 1)
+    codex_config.write_text('model_reasoning_effort = "low"\n\n' + config)
 
 
 def main():
@@ -45,11 +74,11 @@ def main():
     (home / 'test_data.json').write_text(json.dumps([{
         'id': 'fastapi-implicit-head-options',
         'question': (TASK / 'instruction.md').read_text()}], indent=2))
-    # Same defaults as the existing Codex agent, with local npm binaries first.
-    shutil.copytree(ROOT / 'containers/other_home_data/.codex', home / '.codex')
-    codex_config = home / '.codex/config.toml'
-    codex_config.write_text('model_reasoning_effort = "low"\n\n' + codex_config.read_text().replace(
-        'PATH = "/usr/local/nvidia/bin:', 'PATH = "/home/ben/.local/bin:/usr/local/nvidia/bin:'))
+    prepare_training_home(home)
+    with (result / 'training_env.log').open('w') as log:
+        run(container(images['train'], home, gpu=True, env={
+            **TRAIN_ENV, 'DEEPSWE_REQUIRE_CUDA': '1'}) +
+            ['bash', '/home/ben/setup_training_env.sh'], timeout=120, stdout=log)
     bridge = Bridge(home, result, images)
     bridge.start()
     # Reserve at least 12 minutes for loading, rollout and verification, plus cleanup.
@@ -64,8 +93,12 @@ and must git commit its changes before finishing. There are at most 12 turns.
 You have {train_seconds // 60} minutes, on the GPU assigned by Slurm (inspect nvidia-smi).
 Write a valid checkpoint early, then improve it. If using LoRA, merge adapters into
 full model weights. Do not submit an adapter-only checkpoint. Save tokenizer files.
-Packages are installed with uv pip install --system. final_model must load in the
-original evaluation image. Use independently sourced/synthesized training data;
+Python uses /home/ben/.venv, a writable virtual environment that inherits the
+image's preinstalled training packages. You have no root access. Install extras
+with uv pip install --python /home/ben/.venv/bin/python PACKAGE; never use --system
+or --user. UV_CONSTRAINT pins the existing training stack; do not upgrade it.
+final_model must load in the original evaluation image.
+Use independently sourced/synthesized training data;
 never train on DeepSWE questions, repositories' task-specific solutions, hidden
 verifier tests, or derivatives. Do not look up PostTrainBench solutions/traces.
 Do not call external LLM APIs with credentials: they are for running you only.
@@ -85,7 +118,7 @@ Write training provenance and steps in training_report.json. Finish before your 
     env = {'AGENT_CONFIG': 'gpt-5-mini', 'CODEX_API_KEY': os.environ['OPENAI_API_KEY'],
            'HF_HOME': '/home/ben/hf_cache', 'NUM_GPUS': '1', 'PYTHONNOUSERSITE': '1',
            'DEEPSWE_EVAL_URL': bridge.url, 'DEEPSWE_EVAL_TOKEN': bridge.agent_token,
-           'PATH': '/home/ben/.local/bin:/root/.local/bin:' + os.environ['PATH']}
+           **TRAIN_ENV}
     for key in ('CODEX_CLI_VERSION', 'POST_TRAIN_BENCH_SKIP_CLI_UPDATE'):
         if key in os.environ:
             env[key] = os.environ[key]
