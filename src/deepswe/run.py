@@ -76,7 +76,7 @@ def main():
     (result / 'run_config.json').write_text(json.dumps(config, indent=2))
     # Verify task image and no-network support before spending time training.
     run(container(images['task'], result / 'preflight_home') +
-        ['bash', '-c', f'test -d /app/.git && test "$(git -c safe.directory=/app rev-parse HEAD)" = {BASE_COMMIT} && node --version && python3 --version'])
+        ['bash', '-c', f'test -d /app/.git && test "$(git -C /app -c safe.directory=/app rev-parse HEAD)" = {BASE_COMMIT} && node --version && python3 --version'])
     for source, destination in [
         ('agents/codex/solve.sh', home / 'agent_solve.sh'),
         ('src/deepswe/start_agent.sh', home / 'start_agent.sh'),
