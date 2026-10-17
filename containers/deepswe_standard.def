@@ -1,0 +1,27 @@
+Bootstrap: localimage
+From: containers/vllm_debug.sif
+
+# Ibex rebuild: reuse the verified, local CUDA/PyTorch evaluation baseline.
+# Restore standard.def's pinned training packages and agent CLI. This does not
+# constrain packages installed later by the training agent.
+%files
+    containers/requirements-direct.txt /opt/requirements-direct.txt
+
+%post
+    set -eu
+    export PATH="/root/.local/bin:$PATH"
+    uv pip install --system --no-cache -r /opt/requirements-direct.txt
+    npm uninstall -g @anthropic-ai/claude-code @google/gemini-cli opencode-ai
+    npm install -g @openai/codex@0.137.0
+    python -c "import torch, transformers; assert torch.__version__ == '2.8.0+cu129'; assert transformers.__version__ == '4.57.3'"
+
+%environment
+    export PATH="/root/.local/bin:$PATH"
+    export NO_PROXY="localhost,127.0.0.1"
+    export no_proxy="localhost,127.0.0.1"
+
+%runscript
+    exec python3 "$@"
+
+%labels
+    Description DeepSWE training image rebuilt from the fixed local evaluation runtime

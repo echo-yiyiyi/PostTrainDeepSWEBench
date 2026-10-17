@@ -260,3 +260,6 @@ src/disallowed_usage_judge/rerun_judge/rerun_specific_runs_logs/
 
 results/
 dcgm/
+# Local external-storage compatibility symlinks
+/results
+/.cache

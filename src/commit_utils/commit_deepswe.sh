@@ -4,7 +4,7 @@ set -euo pipefail
 source "$(dirname "$0")/../deepswe/common.sh"
 mkdir -p logs
 args=(--job-name=posttrain-deepswe --nodes=1 --ntasks=1 --cpus-per-task=8
-      --mem=64G --gres="${DEEPSWE_GRES:-gpu:a100:1}" --time=00:59:00
+      --mem=64G --gres="${DEEPSWE_GRES:-gpu:a100:1}" --time=01:20:00
       --chdir="$DEEPSWE_ROOT"
       --output=logs/deepswe_%j.out --error=logs/deepswe_%j.err)
 [[ -z "${DEEPSWE_PARTITION:-}" ]] || args+=(--partition="$DEEPSWE_PARTITION")

@@ -40,6 +40,32 @@ class RuntimeTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn('must be inside', result.stderr)
 
+    def test_explicit_external_storage_and_symlink_escape(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / 'project'
+            scripts = root / 'src/deepswe'
+            scripts.mkdir(parents=True)
+            shutil.copy2(ROOT / 'src/deepswe/common.sh', scripts / 'common.sh')
+            images = Path(tmp) / 'datasets'
+            images.mkdir()
+            results = Path(tmp) / 'results'
+            (root / '.env').write_text(
+                f'DEEPSWE_STORAGE_IMAGES="{images}"\n'
+                f'DEEPSWE_STORAGE_RESULTS="{results}"\n')
+            env = {k: v for k, v in os.environ.items()
+                   if not k.startswith('DEEPSWE_') and k not in
+                   ('HF_HOME', 'SINGULARITY_CACHEDIR', 'OPENAI_API_KEY')}
+            command = ('module() { :; }; source "$1" || exit; '
+                       'printf "%s\\n" "$DEEPSWE_TRAIN_SIF" "$HF_HOME" "$DEEPSWE_RESULTS"')
+            args = ['bash', '-c', command, 'test', str(scripts / 'common.sh')]
+            result = subprocess.run(args, env=env, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout.splitlines(), [str(images / 'standard.sif'),
+                str(results / '.cache/huggingface'), str(results / 'deepswe_smoke')])
+            (images / 'standard.sif').symlink_to(Path(tmp) / 'PostTrainBench/standard.sif')
+            result = subprocess.run(args, env=env, capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+
     def test_checkpoint_scope_and_symlinks(self):
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp)

@@ -1,4 +1,4 @@
-"""Ibex 59-minute post-training smoke run (Codex -> checkpoint -> DeepSWE)."""
+"""Ibex 80-minute post-training smoke run (Codex -> checkpoint -> DeepSWE)."""
 from __future__ import annotations
 
 import json
@@ -40,6 +40,9 @@ def prepare_training_home(home):
 
 def main():
     started = time.monotonic()
+    train_seconds = min(int(os.environ.get("DEEPSWE_TRAIN_SECONDS", "3600")), 3600)
+    if train_seconds <= 0:
+        raise ValueError("DEEPSWE_TRAIN_SECONDS must be positive")
     result = Path(os.environ['DEEPSWE_RESULTS']).resolve() / os.environ['SLURM_JOB_ID']
     result.mkdir(parents=True, exist_ok=False)
     home = result / 'training_home'
@@ -52,10 +55,11 @@ def main():
             raise FileNotFoundError(image)
     base = os.environ.get('DEEPSWE_BASE_MODEL', 'Qwen/Qwen3-1.7B-Base')
     config = {'agent': 'codex', 'agent_config': 'gpt-6-sol', 'model_to_train': base,
-              'reasoning_effort': 'low',
+              'reasoning_effort': 'low', 'train_seconds': train_seconds,
+              'slurm_walltime_seconds': 4800,
               'container_fakeroot': True,
               'benchmark': 'deepswe', 'num_tasks': 1, 'seed': 72332,
-              'smoke_only': True, 'integrity_judges': 'not run in 59-minute smoke test',
+              'smoke_only': True, 'integrity_judges': 'not run in this smoke test',
               'images': {k: str(v) for k, v in images.items()}}
     (result / 'run_config.json').write_text(json.dumps(config, indent=2))
     # Verify task image and no-network support before spending time training.
@@ -80,8 +84,7 @@ def main():
             ['bash', '/home/ben/setup_training_env.sh'], timeout=120, stdout=log)
     bridge = Bridge(home, result, images)
     bridge.start()
-    # Leave 19 minutes for setup, final evaluation (12 minutes), and cleanup.
-    train_seconds = min(int(os.environ.get('DEEPSWE_TRAIN_SECONDS', '2400')), 2400)
+    # Reserve 20 minutes outside training for setup, final evaluation, and cleanup.
     prompt = f'''You are the PostTrainBench training agent. Improve {base} on general
 software-engineering repository repair tasks, evaluated on a held-out DeepSWE task.
 You have freedom to choose data sources, training methods and experiments,
@@ -154,7 +157,7 @@ There is no user interaction. Operate autonomously and finish before your deadli
         bridge.lock.release()
         if not (task / 'final_model/config.json').is_file():
             raise RuntimeError('Codex did not produce final_model/config.json')
-        if time.monotonic() - started > 2700:
+        if time.monotonic() - started > 3900:
             raise RuntimeError('Insufficient time remaining for final evaluation')
         metrics = bridge.evaluate('/home/ben/task/final_model')
         (result / 'metrics.json').write_text(json.dumps(metrics, indent=2) + '\n')

@@ -18,12 +18,12 @@ bash src/commit_utils/commit_deepswe.sh
 The second command first caches a checksum-verified uv 0.9.7 binary locally on
 the submission node, then submits exactly one GPU training/evaluation job. If the task
 SIF is absent, it first submits a separate CPU image preparation job and makes
-the GPU job depend on its success. The GPU job has a 59-minute walltime; the CPU preparation job has 30 minutes. Image
+the GPU job depend on its success. The GPU job has an 80-minute walltime; the CPU preparation job has 30 minutes. Image
 preparation does not consume the training job's GPU budget. Never build images
 inside the training container. A failed preparation cancels the dependent job.
 
 Defaults: `module load singularity/3.9.7`, automatic partition routing, one A100, 8 CPU cores,
-64 GiB RAM, 59 minutes total. The training agent gets 40 minutes (including CLI
+64 GiB RAM, 80 minutes total. The training agent gets 60 minutes (including CLI
 update and any exploratory evaluations), leaving time for model loading,
 rollout and the original verifier. This tests the plumbing, not convergence or
 full DeepSWE performance. The single task's official verifier allows 30 minutes
@@ -35,8 +35,8 @@ into another checkout. Copy `src/deepswe/config.env.example` to `.env` if needed
 and set `OPENAI_API_KEY` privately there. The host passes this key as
 `CODEX_API_KEY` only to outer Codex, never to the model's shell or verifier.
 
-All images, cache and outputs must resolve inside this repository; external paths
-and symlinks into another checkout are rejected, including stale exported values.
+Images, cache and outputs must resolve inside this repository or its explicitly
+configured external storage roots. Paths into unrelated checkouts are rejected.
 The default images are `containers/standard.sif`, `containers/vllm_debug.sif`, and
 `containers/deepswe-fastapi.sif`. Build/provision the first two before submission;
 the task image is pulled automatically if absent. No image is borrowed from
@@ -49,13 +49,47 @@ DEEPSWE_ACCOUNT=conf-cvpr-2026.11.23-ghanembs bash src/commit_utils/commit_deeps
 
 Overrides: `DEEPSWE_SINGULARITY_MODULE`, `DEEPSWE_BASE_MODEL`, `DEEPSWE_GRES`,
 `DEEPSWE_ACCOUNT`, `DEEPSWE_PARTITION` (normally unset on Ibex), `HF_HOME`,
-`DEEPSWE_RESULTS`, `DEEPSWE_TRAIN_SECONDS` (default 2400, maximum 2400),
+`DEEPSWE_RESULTS`, `DEEPSWE_TRAIN_SECONDS` (default 3600, maximum 3600),
 `CODEX_CLI_VERSION`, `POST_TRAIN_BENCH_SKIP_CLI_UPDATE`.
-The scaffold/chat template currently supports Qwen3 only. To build the local ML
-SIFs, run `singularity build containers/standard.sif containers/standard.def` and
-`singularity build containers/vllm_debug.sif containers/vllm_debug.def` on a build
-host with suitable privileges, after loading the Singularity module. Ibex's
-unprivileged `singularity pull docker://...` is sufficient for the task image.
+The scaffold/chat template currently supports Qwen3 only. Build ML images on an
+Ibex compute node with `module load singularity/3.9.7`, `--fakeroot`, and a local
+`/tmp` directory for `SINGULARITY_TMPDIR`. Login nodes do not have the required
+subordinate UID mappings. The CPU build uses the ordinary account, since the
+conference account requires a GPU allocation:
+
+```bash
+sbatch --account=pi-ghanembs --partition=batch --cpus-per-task=16 --mem=64G \
+  --time=00:59:00 --output=logs/deepswe_build_%j.out --error=logs/deepswe_build_%j.err \
+  dev_utils/deepswe/rebuild_standard.sh --from-eval
+```
+
+This snapshots the current recipe and requirements and produces a candidate at
+`results/image_build_JOB_ID/standard.sif`, with recipe and image checksums.
+`--from-eval` uses `containers/deepswe_standard.def`: it inherits the local fixed
+evaluation SIF's CUDA/PyTorch stack, restores the standard training dependency
+pins (including the regular Inspect AI release), and installs the standard Codex
+CLI. It avoids downloading the same large CUDA libraries again. The base SIF is
+hard-linked into the build snapshot and its checksum is recorded.
+Without `--from-eval`, the script builds the CUDA-based `standard.def` from scratch
+(allow a longer walltime). That mode replaces `--torch-backend=auto` with `cu129`
+in the build copy because a CPU node would otherwise select CPU wheels.
+The original standard recipe is preserved alongside either build.
+It does not overwrite the active SIF. Editing a `.def` does not update an existing SIF;
+inspect the embedded recipe with `singularity inspect --deffile IMAGE`.
+The image is assembled in node-local `/tmp` and copied back only after the build
+succeeds. Check `quota -s` before building: filesystem-wide `df` free space does
+not reflect the user's home quota. Allow roughly 12 GiB for the candidate in
+addition to the current image, plus room for compatibility-test artifacts.
+Before replacing the active image, run `dev_utils/deepswe/check_image_compat.sh
+CANDIDATE_PATH` in a 30-minute A100 Slurm allocation. It records package inventories,
+checks direct dependency drift and core train/eval versions, and exercises a
+synthetic tiny Qwen3 LoRA update, merge, safetensors export, tokenizer/template
+round trip, matching Transformers logits, and vLLM generation in the fixed eval
+image. No benchmark data or existing trained checkpoint is changed. These checks
+validate the starting environment; agents can still change their own packages.
+Temporary probe weights and container homes stay in node-local `/tmp`; only logs,
+package inventories and comparison reports are retained in `results/image_compat_JOB_ID`.
+Ibex's unprivileged `singularity pull docker://...` is sufficient for the task image.
 
 ## Execution and isolation
 
@@ -154,7 +188,7 @@ A checkpoint must be a complete Hugging Face model and tokenizer; LoRA adapters
 must be merged. The agent prompt requires independent training data and prohibits
 using this held-out task or its derivatives for training. The test prompt is
 provided only as input to the existing contamination checker, matching PostTrain.
-No minimum score or positive training effect is assumed for a 40-minute training run.
+No minimum score or positive training effect is assumed for a 60-minute training run.
 
 ## Validation
 
@@ -184,3 +218,19 @@ Vendored task: `datacurve-ai/deep-swe`, commit
 `0b9fabbb63b9104d678fe965e1632f2dd9eaa2ea`, Apache-2.0, license retained in
 `src/eval/tasks/deepswe/harbor_task/LICENSE`. Upstream tests are unchanged;
 `solution/` is intentionally excluded.
+
+### Ibex storage
+
+This checkout's `.env` sets `DEEPSWE_STORAGE_RESULTS` to
+`/ibex/user/yangz0h/results/post_train_deepswe` and `DEEPSWE_STORAGE_IMAGES` to
+`/ibex/user/yangz0h/datasets/post_train_deepswe`. Training runs live in
+`$DEEPSWE_STORAGE_RESULTS/deepswe_smoke`, model caches in
+`$DEEPSWE_STORAGE_RESULTS/.cache/huggingface`, and Singularity download caches in
+`$DEEPSWE_STORAGE_RESULTS/.cache/singularity-build`. Active SIFs live directly
+in the image directory; historical SIFs are under `archive/`, new builds under
+`build_JOB_ID/`. Build reports and compatibility reports remain in the results
+storage. Build/extraction temporary files still use compute-node `/tmp`.
+
+Local `results`, `.cache`, and `containers/*.sif` symlinks preserve old paths.
+The repository and credentials stay in this checkout; no sibling checkout is
+used. Without explicit storage configuration, paths default to this checkout.
