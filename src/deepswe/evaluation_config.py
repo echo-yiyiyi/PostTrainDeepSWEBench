@@ -3,11 +3,15 @@ from pathlib import Path
 import re
 
 
-TASK_ID = 'true-myth-iterable-collection-combinators'
-TASK_DIRECTORY = 'true_myth_task'
-BASE_COMMIT = 'd8fbebc75de4991a32354518beff1abf628d0b07'
-TASK_IMAGE = 'public.ecr.aws/d3j8x8q7/swe-bench-202605:kh74r2t7kdnt7h2efdk0hf5asx82zr0s-v1.1'
+TASK_ID = 'happy-dom-abort-pending-body-reads'
+TASK_DIRECTORY = 'happy_dom_task'
+TEACHING_NAME = 'happy_dom'
+BASE_COMMIT = '82a0888cb2c87a6123e05424b528f8e8c9b3e426'
+TASK_IMAGE = 'public.ecr.aws/d3j8x8q7/swe-bench-202605:kh7c2re7cvbseq7xz6samd1xr182y1dc-v1.1'
 EXPERIMENT_MODE = 'task_specific_training'
+HARNESS = 'mini-swe-agent'
+MINI_REVISION = '04d809ceab9df28f9adaed044884180159172930'
+PIER_REFERENCE_REVISION = '4d3c14041d16443f3f9f460dcdf23629994a304e'
 
 
 def task_timeout(path, section):
@@ -24,14 +28,26 @@ def task_timeout(path, section):
 def defaults(task_file):
     return {'agent_timeout_seconds': task_timeout(task_file, 'agent'),
             'verifier_timeout_seconds': task_timeout(task_file, 'verifier'),
-            'gpu_memory_utilization': 0.3, 'max_tokens': 4000, 'temperature': None, 'max_model_len': None,
-            'max_turns': None, 'history_truncation': False}
+            'gpu_memory_utilization': 0.3, 'max_tokens': 4000, 'temperature': None, 'max_model_len': 32768,
+            'max_turns': None, 'history_truncation': False, 'summarization': False,
+            'harness': HARNESS, 'mini_revision': MINI_REVISION,
+            'pier_reference_revision': PIER_REFERENCE_REVISION}
 
 
-PROTOCOL = '''You are solving a software engineering task in /app.
-Respond with exactly one JSON object per turn: {"command": "a bash command"}.
-Commands execute in /app in the task environment; edits to /app persist.
-Inspect and edit the repository and test your changes. Before finishing, commit
-all your changes with git (configure user.name/user.email locally if needed).
-Only committed changes are graded. When finished respond {"done": true}.
-Do not print markdown fences.'''
+PROTOCOL = '''Evaluation uses the official mini-swe-agent v2 agent and mini.yaml
+prompt templates. Read mini_swe_config.yaml for the exact system/instance and
+observation/error templates, and mini_swe_bash_tool.json for the tool schema.
+The model emits native bash function calls, NOT {"command":...}/{"done":true}
+standalone JSON actions. Use templates/qwen3.jinja with tools=[the bash schema]
+when preparing training inputs. Assistant tool calls use <tool_call> blocks;
+tool observations are rendered with <tool_response> by the same chat template.
+Commands run in /app in independent shells; repository edits persist, shell
+variables and cd do not. Commit all changes before submitting. Submit via the
+bash tool: echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT (alone).
+max_tokens controls output per API request via model.model_kwargs.max_tokens.
+The server overrides only generation_config.max_new_tokens with this budget,
+so a checkpoint cannot silently impose a smaller output limit.
+The server's total input-plus-output context is max_model_len. Native mini-swe
+does not automatically summarize; context exhaustion ends the rollout, and the
+existing committed diff is graded by the official separate verifier.
+'''

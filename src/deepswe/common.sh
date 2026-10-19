@@ -16,9 +16,10 @@ export DEEPSWE_STORAGE_RESULTS="$(realpath -m -- "${DEEPSWE_STORAGE_RESULTS:-$DE
 export DEEPSWE_STORAGE_IMAGES="$(realpath -m -- "${DEEPSWE_STORAGE_IMAGES:-$DEEPSWE_ROOT/containers}")"
 export DEEPSWE_TRAIN_SIF="${DEEPSWE_TRAIN_SIF:-$DEEPSWE_STORAGE_IMAGES/standard.sif}"
 export DEEPSWE_EVAL_SIF="${DEEPSWE_EVAL_SIF:-$DEEPSWE_STORAGE_IMAGES/vllm_debug.sif}"
-export DEEPSWE_TASK_SIF="${DEEPSWE_TASK_SIF:-$DEEPSWE_STORAGE_IMAGES/deepswe-true-myth.sif}"
+export DEEPSWE_TASK_SIF="${DEEPSWE_TASK_SIF:-$DEEPSWE_STORAGE_IMAGES/deepswe-happy-dom.sif}"
 export HF_HOME="${HF_HOME:-$DEEPSWE_STORAGE_RESULTS/.cache/huggingface}"
 export DEEPSWE_RESULTS="${DEEPSWE_RESULTS:-$DEEPSWE_STORAGE_RESULTS/deepswe_smoke}"
+export DEEPSWE_MINI_PYTHON="${DEEPSWE_MINI_PYTHON:-$DEEPSWE_STORAGE_RESULTS/mini-swe-venv/bin/python}"
 export SINGULARITY_CACHEDIR="${SINGULARITY_CACHEDIR:-$DEEPSWE_STORAGE_RESULTS/.cache/singularity-build}"
 # Permit this checkout and explicitly configured storage, never an implicit
 # fallback to another checkout's configuration or images.

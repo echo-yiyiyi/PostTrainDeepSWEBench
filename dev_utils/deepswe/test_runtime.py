@@ -1,8 +1,10 @@
 """No GPU/network dependencies: isolation, authentication and artifact handling."""
 import importlib.util
+from contextlib import nullcontext
 import json
 import os
 import shutil
+import shlex
 from pathlib import Path
 import sys
 import subprocess
@@ -18,6 +20,70 @@ from runtime import Bridge, TaskEnvironment, container, resolve_checkpoint
 
 
 class RuntimeTests(unittest.TestCase):
+    def test_initialized_repository_can_commit_without_global_identity(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            clean_home = directory / 'clean_home'
+            clean_home.mkdir()
+            git_env = {k: v for k, v in os.environ.items() if not k.startswith('GIT_')}
+            git_env.update(HOME=str(clean_home), XDG_CONFIG_HOME=str(clean_home),
+                           GIT_CONFIG_NOSYSTEM='1')
+
+            def git(*args):
+                return subprocess.run(['git', '-C', str(directory / 'agent_app'), *args],
+                                      env=git_env, text=True, capture_output=True, check=True).stdout
+
+            def extract(_self, target, home):
+                git('init')
+
+            def local_setup(cmd, **kwargs):
+                # Execute the real setup script against a temporary repository;
+                # only replace the container's mount path for this CPU test.
+                script = cmd[-1].replace('/app', shlex.quote(str(directory / 'agent_app')))
+                subprocess.run(['bash', '-e', '-c', script], env=git_env, check=True)
+                return 0, ''
+
+            with patch.object(TaskEnvironment, 'extract', extract), patch('runtime.run', side_effect=local_setup):
+                task = TaskEnvironment(directory, 'unused.sif')
+            (task.app / 'code.py').write_text('print("base")\n')
+            git('add', 'code.py')
+            git('commit', '-m', 'base')
+            base = git('rev-parse', 'HEAD').strip()
+            (task.app / 'code.py').write_text('print("modified")\n')
+            git('add', 'code.py')
+            git('commit', '-m', 'model change')
+            self.assertIn('+print("modified")', git('diff', '--binary', base, 'HEAD'))
+            self.assertEqual(git('log', '-1', '--format=%an <%ae>').strip(),
+                             'DeepSWE Agent <agent@deepswe.local>')
+            self.assertFalse((clean_home / '.gitconfig').exists())
+
+    def test_harness_selection_uses_host_metadata_not_teacher_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            home = root / 'training_home'
+            checkpoint = home / 'task/final_model'
+            checkpoint.mkdir(parents=True)
+            (checkpoint / 'config.json').write_text('{}')
+            result = root / 'results'
+            result.mkdir()
+            host_config = root / 'run_config.json'
+            host_config.write_text('{}')  # old run: keep its legacy protocol
+            agent_config = home / 'task/evaluation_config.json'
+            agent_config.write_text('{"harness":"mini-swe-agent"}')
+            bridge = Bridge(home, result, {'task': 'unused.sif'})
+            try:
+                with patch.dict(os.environ, HF_HOME=str(root / 'cache')), patch('runtime.TaskEnvironment'), patch('runtime.cache_overlay', side_effect=lambda *a: nullcontext(root / 'cache')), patch.object(bridge, '_run_model', return_value={'accuracy': 0}) as legacy, patch.object(bridge, '_run_mini_model', return_value={'accuracy': 0}) as native:
+                    bridge.evaluate('/home/ben/task/final_model')
+                    self.assertEqual(legacy.call_count, 1)
+                    native.assert_not_called()
+                    host_config.write_text('{"harness":"mini-swe-agent"}')
+                    agent_config.write_text('{"harness":"legacy-json"}')
+                    bridge.evaluate('/home/ben/task/final_model')
+                    self.assertEqual(legacy.call_count, 1)
+                    self.assertEqual(native.call_count, 1)
+            finally:
+                bridge.server.server_close()
+
     def test_config_is_checkout_local_and_rejects_external_images(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / 'project'

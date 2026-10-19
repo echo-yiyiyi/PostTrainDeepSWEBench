@@ -1,9 +1,13 @@
-"""Trusted entry point, invoked by the host bridge in a fresh ML container.
+"""Host-only final evaluator for the full-suite Slurm protocol.
 
-The generic Condor run_final_eval.sh is not this benchmark's launcher: use
-src/commit_utils/commit_deepswe.sh, which owns the external task environments.
+Usage: evaluate_final_eval.py RUN --index TASK_INDEX [--seed 72332]
+       evaluate_final_eval.py RUN --aggregate
+The agent-facing evaluate.py exposes aggregate training-trial scores via the host bridge.
 """
-import runpy
+from pathlib import Path
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / 'deepswe'))
+from full_evaluate import main
 
 if __name__ == '__main__':
-    runpy.run_path('/harness/inspect_eval.py', run_name='__main__')
+    main()

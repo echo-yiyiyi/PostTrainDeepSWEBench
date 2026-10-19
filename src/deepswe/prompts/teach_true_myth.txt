@@ -43,9 +43,15 @@ Runtime and submission:
   Evaluation base revision: d8fbebc75de4991a32354518beff1abf628d0b07.
 - The task model sees /app in a separate, network-isolated task container. Tools
   installed in the training container do not carry into that task container.
-- The task model must emit one JSON object per response: {"command":"bash command"}
-  or {"done":true}. No markdown fences. Only git-committed changes are graded.
-  See evaluation_protocol.txt and evaluation_config.json for the exact interface.
+- Evaluation uses the official mini-swe-agent v2 harness. The task model must
+  emit native bash tool calls. Read mini_swe_config.yaml (exact upstream prompts),
+  mini_swe_bash_tool.json (tool schema), evaluation_protocol.txt and
+  evaluation_config.json. Train with tools=[the bash schema] passed to the fixed
+  chat template; standalone {"command":...}/{"done":true} JSON is NOT this protocol.
+  Commit changes, then submit with the bash command
+  echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT alone. Only commits are graded.
+  Shells are independent across calls. Context is 32768 tokens including output;
+  max_tokens limits each output. Native mini-swe does not automatically summarize.
 - Training Python is /home/ben/.venv/bin/python. Install packages with
   uv pip install --python /home/ben/.venv/bin/python PACKAGE.
   Experiments may change packages, but the submitted model must load with the

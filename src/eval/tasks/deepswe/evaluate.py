@@ -16,13 +16,13 @@ def main():
     p.add_argument('--limit', type=int, default=-1)
     p.add_argument('--seed', type=int, default=72332)
     a = p.parse_args()
-    if a.limit not in (-1, 1):
-        p.error('This benchmark contains one task; --limit must be 1 or -1')
-    body = json.dumps({'model_path': str(Path(a.model_path).resolve()), 'seed': a.seed, 'max_tokens': a.max_tokens}).encode()
+    if a.limit != -1 and not 1 <= a.limit <= 113:
+        p.error('--limit must be -1 (all 113 tasks) or an integer from 1 to 113')
+    body = json.dumps({'model_path': str(Path(a.model_path).resolve()), 'seed': a.seed, 'max_tokens': a.max_tokens, 'limit': a.limit}).encode()
     req = urllib.request.Request(os.environ['DEEPSWE_EVAL_URL'] + '/evaluate', data=body,
         headers={'Authorization': 'Bearer ' + os.environ['DEEPSWE_EVAL_TOKEN'], 'Content-Type': 'application/json'})
     try:
-        with urllib.request.urlopen(req, timeout=14400) as response:
+        with urllib.request.urlopen(req, timeout=604800) as response:
             result = json.load(response)
     except urllib.error.HTTPError as error:
         detail = error.read().decode('utf-8', errors='replace')

@@ -1,38 +1,35 @@
 #!/bin/bash
-# One outer Codex post-training run, one exposed training task, one evaluation seed.
+# Training -> independent all-test array -> complete-only aggregate.
 set -euo pipefail
 source "$(dirname "$0")/../deepswe/common.sh"
-mkdir -p logs
-args=(--job-name=posttrain-deepswe --nodes=1 --ntasks=1 --cpus-per-task=8
-      --mem=64G --gres="${DEEPSWE_GRES:-gpu:a100:1}" --time="${DEEPSWE_JOB_WALLTIME:-01:30:00}"
-      --chdir="$DEEPSWE_ROOT"
-      --output=logs/deepswe_%j.out --error=logs/deepswe_%j.err)
-[[ -z "${DEEPSWE_PARTITION:-}" ]] || args+=(--partition="$DEEPSWE_PARTITION")
-account_args=()
-[[ -z "${DEEPSWE_ACCOUNT:-}" ]] || account_args+=(--account="$DEEPSWE_ACCOUNT")
-args+=("${account_args[@]}")
+account=conf-cvpr-2026.11.23-ghanembs
+common=(--account="$account" --gres="${DEEPSWE_GRES:-gpu:a100:1}" --nodes=1 --ntasks=1
+        --cpus-per-task=8 --mem=64G --chdir="$DEEPSWE_ROOT")
+[[ -z "${DEEPSWE_PARTITION:-}" ]] || common+=(--partition="$DEEPSWE_PARTITION")
 if [[ "${1:-}" == --dry-run ]]; then
-    printf '%q ' sbatch "${args[@]}" src/deepswe/job.sh
-    printf '\n'
-    [[ -f "$DEEPSWE_TASK_SIF" ]] || echo 'A separate CPU image preparation job will precede this job.'
+    echo '10h training + judges, followed by all 113 test tasks (array concurrency 4), then complete-only aggregation.'
+    echo "Model: Qwen/Qwen3.5-9B; results: $DEEPSWE_STORAGE_RESULTS/deepswe; account: $account"
     exit 0
 fi
-for path in "$DEEPSWE_TRAIN_SIF" "$DEEPSWE_EVAL_SIF"; do
-    [[ -f "$path" ]] || { echo "Missing image: $path. See src/deepswe/README.md." >&2; exit 1; }
+for file in "$DEEPSWE_STORAGE_IMAGES/qwen35.sif" "$DEEPSWE_STORAGE_IMAGES/deepswe_manifest.json" "$DEEPSWE_STORAGE_IMAGES/qwen35_ready.json"; do
+    [[ -f "$file" ]] || { echo "Missing preparation/validation artifact: $file" >&2; exit 1; }
 done
-[[ -n "${OPENAI_API_KEY:-}" ]] || { echo 'OPENAI_API_KEY is required in .env (same as agent=codex).' >&2; exit 1; }
+python3 src/deepswe/check_full_ready.py
 bash src/deepswe/prepare_uv.sh
-if [[ ! -f "$DEEPSWE_TASK_SIF" ]]; then
-    prepare_id="${DEEPSWE_PREPARE_JOB_ID:-}"
-    if [[ -z "$prepare_id" ]]; then
-        prepare_id=$(sbatch --parsable "${account_args[@]}" --job-name=deepswe-prepare --nodes=1 --ntasks=1 \
-            --cpus-per-task=4 --mem=16G --time=00:30:00 --chdir="$DEEPSWE_ROOT" \
-            --output=logs/deepswe_prepare_%j.out --error=logs/deepswe_prepare_%j.err \
-            src/deepswe/prepare_images.sh)
-        prepare_id="${prepare_id%%;*}"
-        echo "Image preparation job: $prepare_id"
-    fi
-    [[ "$prepare_id" =~ ^[0-9]+$ ]] || { echo 'Invalid preparation job ID' >&2; exit 1; }
-    args+=(--dependency="afterok:$prepare_id" --kill-on-invalid-dep=yes)
-fi
-sbatch "${args[@]}" src/deepswe/job.sh
+bash src/deepswe/prepare_mini.sh
+mkdir -p logs
+
+[[ $# -eq 0 ]] || { echo 'Usage: commit_deepswe.sh [--dry-run]' >&2; exit 1; }
+[[ -n "${OPENAI_API_KEY:-}" ]] || { echo 'OPENAI_API_KEY is required' >&2; exit 1; }
+train=$(sbatch --parsable "${common[@]}" --job-name=deepswe-train --time="${DEEPSWE_FULL_WALLTIME:-12:00:00}" \
+    --output=logs/deepswe_train_%j.out --error=logs/deepswe_train_%j.err src/deepswe/full_job.sh train)
+train=${train%%;*}
+result="$DEEPSWE_STORAGE_RESULTS/deepswe/$train"
+eval_job=$(sbatch --parsable "${common[@]}" --job-name=deepswe-eval --time=05:00:00 \
+    --array="0-112%${DEEPSWE_FULL_EVAL_CONCURRENCY:-4}" --dependency="afterok:$train" --kill-on-invalid-dep=yes \
+    --output=logs/deepswe_eval_%A_%a.out --error=logs/deepswe_eval_%A_%a.err src/deepswe/full_job.sh evaluate "$result")
+eval_job=${eval_job%%;*}
+aggregate=$(sbatch --parsable "${common[@]}" --job-name=deepswe-aggregate --time=00:10:00 \
+    --dependency="afterok:$eval_job" --kill-on-invalid-dep=yes \
+    --output=logs/deepswe_aggregate_%j.out --error=logs/deepswe_aggregate_%j.err src/deepswe/full_job.sh aggregate "$result")
+printf 'Training: %s\nFinal evaluation: %s\nAggregate: %s\nResults: %s\n' "$train" "$eval_job" "$aggregate" "$result"

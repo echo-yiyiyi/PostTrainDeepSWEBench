@@ -19,7 +19,7 @@ def main():
         raise ValueError('Source run must be inside DEEPSWE_RESULTS')
     source_config = json.loads((source / 'run_config.json').read_text())
     if source_config.get('task_id') != TASK_ID:
-        raise ValueError('Source run uses a different task; refusing to relabel its evaluation as true-myth')
+        raise ValueError('Source run uses a different task; refusing to relabel its evaluation as the currently selected task')
     home = source / 'training_home'
     model = '/home/ben/task/final_model'
     checkpoint = resolve_checkpoint(model, home)

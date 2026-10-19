@@ -1,6 +1,6 @@
 """Host-side Singularity task execution and trusted evaluation bridge.
 
-Only the selected true-myth task is supported. This is a native adapter for its
+Only the selected DeepSWE task is supported. This is a native adapter for its
 Harbor task contract, not a general Pier environment backend.
 """
 from __future__ import annotations
@@ -12,16 +12,19 @@ import tempfile
 import os
 from pathlib import Path
 import secrets
+import socket
 import signal
 import subprocess
 import threading
 import time
+import urllib.request
 
 from evaluation_config import defaults, TASK_DIRECTORY, BASE_COMMIT, TASK_ID, EXPERIMENT_MODE
+from model_profiles import serving_args
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 ROOT = Path(__file__).resolve().parents[2]
-TASK = ROOT / 'src/eval/tasks/deepswe' / TASK_DIRECTORY
+TASK = ROOT / 'src/eval/tasks/deepswe_smoke' / TASK_DIRECTORY
 BASE = BASE_COMMIT
 EVAL_CONFIG = defaults(TASK / 'task.toml')
 
@@ -36,9 +39,9 @@ def clean_env():
     return env
 
 
-def run(cmd, timeout=120, check=True, stdout=None, stderr=subprocess.STDOUT, cancel=None):
+def run(cmd, timeout=120, check=True, stdout=None, stderr=subprocess.STDOUT, cancel=None, env=None):
     """Kill the entire container process group on timeout, not only its launcher."""
-    proc = subprocess.Popen(cmd, env=clean_env(), start_new_session=True,
+    proc = subprocess.Popen(cmd, env=clean_env() if env is None else env, start_new_session=True,
                             stdout=stdout or subprocess.PIPE, stderr=stderr, text=True)
     try:
         deadline = time.monotonic() + timeout
@@ -123,26 +126,44 @@ def resolve_checkpoint(model, home):
 
 
 class TaskEnvironment:
-    def __init__(self, directory, image, cancel=None):
+    def __init__(self, directory, image, cancel=None, task=TASK, base=BASE):
         self.directory, self.image = directory, image
+        self.task, self.base = Path(task), base
+        self.config = defaults(self.task / 'task.toml')
         self.cancel = cancel
         self.app = directory / 'agent_app'
         self.home = directory / 'agent_home'
         self.app.mkdir(parents=True)
         self.extract(self.app, self.home)
+        # Identity is environment setup, not a task the evaluated model must solve.
+        # Persist only in this attempt's repository; leave commit creation to the
+        # agent and keep the verifier's committed-diff collection unchanged.
+        with (directory / 'git_setup.log').open('w') as log:
+            run(container(self.image, self.home, [f'{self.app}:/app'], pwd='/app') +
+                ['bash', '-e', '-c',
+                 'git -C /app -c safe.directory=/app config --local user.name "DeepSWE Agent"\n'
+                 'git -C /app -c safe.directory=/app config --local user.email "agent@deepswe.local"'],
+                stdout=log, timeout=60, cancel=self.cancel)
 
     def extract(self, target, home):
         target.mkdir(parents=True, exist_ok=True)
         run(container(self.image, home, [f'{target}:/export']) +
             ['bash', '-c', 'cp -a /app/. /export/'], timeout=180, cancel=self.cancel)
 
-    def shell(self, command):
-        cmd = container(self.image, self.home, [f'{self.app}:/app'], pwd='/app')
+    def shell(self, command, timeout=60, env=None, cwd='/app', truncate=True):
+        cmd = container(self.image, self.home, [f'{self.app}:/app'], pwd=cwd, env=env)
         try:
-            code, output = run(cmd + ['bash', '-c', command], timeout=60, check=False, cancel=self.cancel)
+            # Merge the COMMAND's stderr inside the container, before running it.
+            # The launcher's stderr stays separate: mini-swe checks the first
+            # output line for its submission marker. Pass the command as data,
+            # not interpolated shell text, so quoting/redirections stay intact.
+            with (self.directory / 'singularity-shell.log').open('a') as diagnostic:
+                code, output = run(cmd + ['bash', '-c',
+                    'exec 2>&1\nexec bash -c "$1"', 'deepswe-shell', command],
+                    timeout=timeout, check=False, cancel=self.cancel, stderr=diagnostic)
         except subprocess.TimeoutExpired:
-            return {'exit_code': 124, 'output': 'Command exceeded the 60-second limit and was terminated.'}
-        return {'exit_code': code, 'output': output[-16000:]}
+            return {'exit_code': 124, 'output': '', 'exception_info': f'Command exceeded {timeout} seconds and was terminated.'}
+        return {'exit_code': code, 'output': output[-16000:] if truncate else output}
 
     def verify(self):
         # Collect exactly the committed diff, as specified by [[verifier.collect]].
@@ -150,16 +171,16 @@ class TaskEnvironment:
         artifacts.mkdir()
         with (artifacts / 'model.patch').open('w') as patch, (artifacts / 'collect.log').open('w') as diagnostic:
             run(container(self.image, self.home, [f'{self.app}:/app'], pwd='/app') +
-                ['git', '-c', 'safe.directory=/app', 'diff', '--binary', BASE, 'HEAD'], stdout=patch, stderr=diagnostic, timeout=300, cancel=self.cancel)
+                ['git', '-c', 'safe.directory=/app', 'diff', '--binary', self.base, 'HEAD'], stdout=patch, stderr=diagnostic, timeout=300, cancel=self.cancel)
         app = self.directory / 'verifier_app'
         home = self.directory / 'verifier_home'
         logs = self.directory / 'verifier'
         logs.mkdir()
         self.extract(app, home)
-        cmd = container(self.image, home, [f'{app}:/app', f'{TASK / "tests"}:/tests:ro',
+        cmd = container(self.image, home, [f'{app}:/app', f'{self.task / "tests"}:/tests:ro',
             f'{artifacts}:/logs/artifacts:ro', f'{logs}:/logs/verifier'], pwd='/app')
         with (logs / 'test-stdout.txt').open('w') as out:
-            run(cmd + ['bash', '/tests/test.sh'], timeout=EVAL_CONFIG['verifier_timeout_seconds'], stdout=out, cancel=self.cancel)
+            run(cmd + ['bash', '/tests/test.sh'], timeout=self.config['verifier_timeout_seconds'], stdout=out, cancel=self.cancel)
         reward = json.loads((logs / 'reward.json').read_text())
         if reward.get('reward') not in (0, 1):
             raise RuntimeError('Verifier did not produce a valid binary reward')
@@ -167,8 +188,9 @@ class TaskEnvironment:
 
 
 class Bridge:
-    def __init__(self, home, result, images):
+    def __init__(self, home, result, images, suite_task=None):
         self.home, self.result, self.images = home, result, images
+        self.suite_task = suite_task
         self.agent_token = secrets.token_urlsafe(32)
         self.eval_token = None
         self.task_env = None
@@ -189,17 +211,20 @@ class Bridge:
                 try:
                     token = self.headers.get('Authorization', '').removeprefix('Bearer ')
                     size = int(self.headers.get('Content-Length', '0'))
-                    if not 0 < size <= 65536:
+                    if not 0 < size <= 4 * 1024 * 1024:
                         raise ValueError('Invalid request length')
                     body = json.loads(self.rfile.read(size))
                     if self.path == '/evaluate' and secrets.compare_digest(token, bridge.agent_token):
                         if not bridge.accept_agent:
                             raise ValueError('Training evaluation window has closed')
-                        value = bridge.evaluate(body['model_path'], int(body.get('seed', 72332)),
-                            max_tokens=int(body.get('max_tokens', 4000)), agent_request=True)
+                        value = bridge.evaluate_request(body)
                     elif bridge.eval_token and secrets.compare_digest(token, bridge.eval_token):
                         if self.path == '/shell':
                             value = bridge.task_env.shell(body['command'])
+                        elif self.path == '/mini-shell':
+                            value = bridge.task_env.shell(body['command'],
+                                timeout=body.get('timeout', 30), env=body.get('env'),
+                                cwd=body.get('cwd', '/app'), truncate=False)
                         elif self.path == '/verify':
                             value = bridge.task_env.verify()
                         else:
@@ -221,6 +246,12 @@ class Bridge:
                     pass
         return Handler
 
+    def evaluate_request(self, body):
+        if int(body.get('limit', -1)) not in (-1, 1):
+            raise ValueError('The smoke benchmark contains one task')
+        return self.evaluate(body['model_path'], int(body.get('seed', 72332)),
+                             max_tokens=int(body.get('max_tokens', 4000)), agent_request=True)
+
     def evaluate(self, model_path, seed=72332, max_tokens=4000, agent_request=False):
         if not self.lock.acquire(blocking=False):
             raise RuntimeError('An evaluation is already running')
@@ -229,18 +260,40 @@ class Bridge:
                 raise RuntimeError('Training evaluation window has closed')
             if not 1 <= max_tokens <= 131072:
                 raise ValueError('Invalid max_tokens')
-            self.cancel.clear()
+            if self.cancel.is_set():
+                raise RuntimeError('Evaluation cancelled when training ended')
             checkpoint = resolve_checkpoint(model_path, self.home)
             directory = self.result / ('eval_' + secrets.token_hex(6))
             directory.mkdir()
-            self.task_env = TaskEnvironment(directory, self.images['task'], self.cancel)
-            config = dict(EVAL_CONFIG, max_tokens=max_tokens, task_id=TASK_ID, experiment_mode=EXPERIMENT_MODE)
+            task = Path(self.suite_task['path']) if self.suite_task else TASK
+            base = self.suite_task['base_commit'] if self.suite_task else BASE
+            self.task_env = TaskEnvironment(directory, self.images['task'], self.cancel, task=task, base=base)
+            config = dict(defaults(task / 'task.toml'), max_tokens=max_tokens,
+                          task_id=self.suite_task['id'] if self.suite_task else TASK_ID,
+                          task_path=str(task), experiment_mode='full_held_out' if self.suite_task else EXPERIMENT_MODE,
+                          held_out_evaluation=bool(self.suite_task))
+            # Never silently change the protocol of an already-trained/in-flight run.
+            # This file is host-owned, outside the teacher's writable home.
+            training_config = self.home.parent / 'run_config.json'
+            if training_config.exists():
+                trained = json.loads(training_config.read_text())
+                config['harness'] = trained.get('harness', 'legacy-json')
+                config['model_to_train'] = trained.get('model_to_train', 'Qwen/Qwen3-1.7B-Base')
+            if config.get('model_to_train') == 'Qwen/Qwen3.5-9B':
+                config['gpu_memory_utilization'] = 0.8
+            if config['harness'] == 'mini-swe-agent' and max_tokens >= config['max_model_len']:
+                raise ValueError('max_tokens must be smaller than the total context window')
             (directory / 'evaluation_config.json').write_text(json.dumps(config, indent=2))
             self.eval_token = secrets.token_urlsafe(32)
             cache = Path(os.environ['HF_HOME']).resolve()
             cache.mkdir(parents=True, exist_ok=True)
             with cache_overlay(cache, directory / 'cache_overlay') as merged_cache:
-                metrics = self._run_model(checkpoint, directory, merged_cache, seed)
+                if config['harness'] == 'mini-swe-agent':
+                    metrics = self._run_mini_model(checkpoint, directory, merged_cache, seed, config)
+                elif config['harness'] == 'legacy-json':
+                    metrics = self._run_model(checkpoint, directory, merged_cache, seed)
+                else:
+                    raise ValueError(f'Unsupported harness: {config["harness"]}')
             metrics['evaluation_directory'] = directory.name
             return metrics
         finally:
@@ -252,7 +305,7 @@ class Bridge:
         cmd = container(self.images['eval'], directory / 'model_home', [
             f'{checkpoint}:/model:ro', f'{ROOT / "src/deepswe"}:/harness:ro',
             f'{ROOT / "src/eval/per_sample_seed.py"}:/harness_seed.py:ro',
-            f'{ROOT / "src/eval/tasks/deepswe/evaluate_final_eval.py"}:/evaluate_final_eval.py:ro',
+            f'{ROOT / "src/eval/tasks/deepswe_smoke/evaluate_final_eval.py"}:/evaluate_final_eval.py:ro',
             f'{ROOT / "src/eval/templates"}:/templates:ro',
             f'{TASK / "instruction.md"}:/instruction.md:ro',
             f'{directory}:/output', f'{cache}:/hf_cache'], network=True, gpu=True,
@@ -264,6 +317,64 @@ class Bridge:
                 stdout=log, cancel=self.cancel)
         metrics = json.loads((directory / 'metrics.json').read_text())
         return metrics
+
+    def _run_mini_model(self, checkpoint, directory, cache, seed, config):
+        """Native mini-swe agent on the host; fixed ML SIF serves only local vLLM."""
+        python = Path(os.environ['DEEPSWE_MINI_PYTHON'])
+        if not python.is_file():
+            raise RuntimeError('Run src/deepswe/prepare_mini.sh before submitting')
+        with socket.socket() as sock:
+            sock.bind(('127.0.0.1', 0))
+            port = sock.getsockname()[1]
+        api_key = secrets.token_urlsafe(32)
+        cmd = container(self.images['eval'], directory / 'model_home', [
+            f'{checkpoint}:/model:ro', f'{ROOT / "src/eval/templates"}:/templates:ro',
+            f'{cache}:/hf_cache'], network=True, gpu=True,
+            env={'HF_HOME': '/hf_cache', 'VLLM_API_KEY': api_key, 'PYTHONNOUSERSITE': '1'})
+        cmd += ['python', '-m', 'vllm.entrypoints.openai.api_server', '--model', '/model',
+            '--served-model-name', 'deepswe-qwen', '--host', '127.0.0.1', '--port', str(port),
+            '--enable-auto-tool-choice', '--max-model-len', str(config['max_model_len']),
+            # vLLM 0.11 clamps request max_tokens to the model generation config.
+            # Enforce the evaluation budget while retaining all other defaults.
+            '--override-generation-config', json.dumps({'max_new_tokens': config['max_tokens']}),
+            '--gpu-memory-utilization', str(config['gpu_memory_utilization'])]
+        cmd += serving_args(config.get('model_to_train', 'Qwen/Qwen3-1.7B-Base'), ROOT / 'src/eval/templates')
+        base_url = f'http://127.0.0.1:{port}/v1'
+        with (directory / 'vllm.log').open('w') as server_log:
+            proc = subprocess.Popen(cmd, env=clean_env(), stdout=server_log,
+                stderr=subprocess.STDOUT, start_new_session=True)
+            try:
+                deadline = time.monotonic() + 600
+                while True:
+                    if self.cancel.is_set():
+                        raise RuntimeError('Evaluation cancelled when training ended')
+                    if proc.poll() is not None:
+                        raise RuntimeError('vLLM exited during startup; see vllm.log')
+                    try:
+                        req = urllib.request.Request(base_url + '/models',
+                            headers={'Authorization': 'Bearer ' + api_key})
+                        with urllib.request.urlopen(req, timeout=2):
+                            break
+                    except (OSError, TimeoutError):
+                        if time.monotonic() >= deadline:
+                            raise RuntimeError('vLLM readiness timeout; see vllm.log')
+                        self.cancel.wait(.5)
+                # No teacher/cloud credentials or host configuration enter the agent.
+                env = {'PATH': os.environ.get('PATH', '/usr/bin:/bin'),
+                    'HOME': str(directory / 'model_home'), 'LANG': 'C.UTF-8',
+                    'PYTHONNOUSERSITE': '1', 'LITELLM_LOCAL_MODEL_COST_MAP': 'True',
+                    'DEEPSWE_WORKER_URL': self.url, 'DEEPSWE_WORKER_TOKEN': self.eval_token,
+                    'DEEPSWE_MODEL_URL': base_url, 'DEEPSWE_MODEL_KEY': api_key}
+                with (directory / 'evaluate.log').open('w') as log:
+                    run([str(python), str(ROOT / 'src/deepswe/mini_eval.py'),
+                        '--output', str(directory), '--seed', str(seed)], env=env,
+                        timeout=config['agent_timeout_seconds'] + config['verifier_timeout_seconds'] + 60,
+                        stdout=log, cancel=self.cancel)
+            finally:
+                if proc.poll() is None:
+                    os.killpg(proc.pid, signal.SIGKILL)
+                proc.wait()
+        return json.loads((directory / 'metrics.json').read_text())
 
 
     def close_training_window(self):

@@ -1,0 +1,19 @@
+{
+  "benchmark": "DeepSWE single-task smoke test",
+  "required_api_keys": [],
+  "disallowed_data_examples": [
+    "DeepSWE task prompts, reference solutions, hidden tests, or derivatives of them"
+  ],
+  "allowed_data_examples": [
+    "Independently sourced or synthesized software engineering training examples"
+  ],
+  "task_id": "happy-dom-abort-pending-body-reads",
+  "upstream_commit": "0b9fabbb63b9104d678fe965e1632f2dd9eaa2ea",
+  "runtime": "src/deepswe/job.sh",
+  "smoke_only": true,
+  "experiment_mode": "task_specific_training",
+  "training_task_exposed": true,
+  "held_out_evaluation": false,
+  "reference_solution_exposed": true,
+  "verifier_tests_exposed": true
+}

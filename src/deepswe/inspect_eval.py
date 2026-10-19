@@ -17,7 +17,14 @@ sys.path.insert(0, '/')
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from harness_seed import per_sample_seed
 
-from evaluation_config import PROTOCOL
+# Retained only for older checkpoints trained with this exact legacy protocol.
+PROTOCOL = '''You are solving a software engineering task in /app.
+Respond with exactly one JSON object per turn: {"command": "a bash command"}.
+Commands execute in /app in the task environment; edits to /app persist.
+Inspect and edit the repository and test your changes. Before finishing, commit
+all your changes with git (configure user.name/user.email locally if needed).
+Only committed changes are graded. When finished respond {"done": true}.
+Do not print markdown fences.'''
 
 
 @solver
@@ -44,6 +51,9 @@ def shell_loop(agent_timeout=10800):
         deadline = time.monotonic() + agent_timeout
         while time.monotonic() < deadline:
             state = await generate(state)
+            if state.output.stop_reason == 'model_length':
+                state.metadata['agent_exit_status'] = 'model_length'
+                break
             try:
                 action = json.loads(state.output.completion)
                 if action.get('done') is True:

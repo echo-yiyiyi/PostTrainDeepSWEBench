@@ -1,5 +1,6 @@
 #!/bin/bash
-# Run as a separate CPU batch job; image preparation is outside the 90m GPU test.
+# Run as a separate job; image preparation is outside the 90m training budget.
+# The conference account requires a GPU allocation even for image preparation.
 set -euo pipefail
 # sbatch copies this script into its spool; --chdir sets the repository root.
 source src/deepswe/common.sh

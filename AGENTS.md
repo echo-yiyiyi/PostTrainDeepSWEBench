@@ -189,6 +189,11 @@ The `evaluate.py` must:
 
 ## Running Jobs
 
+For this checkout, submit all Slurm jobs with the conference account
+`conf-cvpr-2026.11.23-ghanembs`, including image preparation and verifier checks.
+Allocate a GPU for those jobs too, as required by this account. Do not switch to
+`pi-ghanembs` for CPU-only work.
+
 ```bash
 # Submit the full agent × benchmark × model sweep (edit the loop / EXPERIMENT_NAME at the top)
 bash src/commit_utils/commit.sh

@@ -16,9 +16,20 @@ sys.path.insert(0, str(ROOT / 'src/deepswe'))
 from runtime import run
 from training_support import make_prompt, make_general_prompt, prepare_teaching_materials
 from runtime import TASK
+from evaluation_config import TEACHING_NAME, TASK_ID, BASE_COMMIT, TASK_IMAGE
 
 
 class FrameworkTests(unittest.TestCase):
+    def test_selected_task_matches_upstream_contract_and_metadata(self):
+        contract = (TASK / 'task.toml').read_text()
+        self.assertIn(f'task_id = "{TASK_ID}"', contract)
+        self.assertIn(f'base_commit_hash = "{BASE_COMMIT}"', contract)
+        self.assertIn(f'docker_image = "{TASK_IMAGE}"', contract)
+        metadata = json.loads((TASK.parent / 'info.json').read_text())
+        self.assertEqual(metadata['task_id'], TASK_ID)
+        prompt = make_prompt('Qwen/Qwen3-1.7B-Base', 3600)
+        self.assertIn(BASE_COMMIT, prompt)
+
     def test_patch_stdout_excludes_container_diagnostics(self):
         with tempfile.TemporaryDirectory() as directory:
             patch_file = Path(directory) / 'model.patch'
@@ -56,7 +67,7 @@ class FrameworkTests(unittest.TestCase):
         self.assertIn('official reference solution and verifier tests', prompt)
         self.assertIn('NOT available to that model at evaluation time', prompt)
         self.assertNotIn('{base_model}', prompt)
-        self.assertEqual(prompt, (ROOT/'src/deepswe/prompts/teach_true_myth.rendered.txt').read_text())
+        self.assertEqual(prompt, (ROOT/'src/deepswe/prompts'/f'teach_{TEACHING_NAME}.rendered.txt').read_text())
         with tempfile.TemporaryDirectory() as directory:
             task = Path(directory)
             prepare_teaching_materials(task, mode='general')
@@ -65,11 +76,11 @@ class FrameworkTests(unittest.TestCase):
             for name in ('test.patch', 'test.sh', 'grader.py', 'config.json'):
                 self.assertEqual((task/'reference_materials/tests'/name).read_bytes(), (TASK/'tests'/name).read_bytes())
             self.assertEqual((task/'reference_materials/solution/solution.patch').read_bytes(),
-                (ROOT/'src/deepswe/teaching_materials/true_myth/solution/solution.patch').read_bytes())
+                (ROOT/'src/deepswe/teaching_materials'/TEACHING_NAME/'solution/solution.patch').read_bytes())
 
     def test_http_error_keeps_diagnostic(self):
         import importlib.util
-        spec = importlib.util.spec_from_file_location('client', ROOT / 'src/eval/tasks/deepswe/evaluate.py')
+        spec = importlib.util.spec_from_file_location('client', ROOT / 'src/eval/tasks/deepswe_smoke/evaluate.py')
         client = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(client)
         error = urllib.error.HTTPError('http://localhost', 500, 'failure', {}, io.BytesIO(b'{"error":"checkpoint invalid"}'))
@@ -111,10 +122,10 @@ class FrameworkTests(unittest.TestCase):
         # and metrics aggregation, with no GPU commands or container launches.
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            for name in ('src/eval/tasks/deepswe', 'src/deepswe', 'src/utils'):
+            for name in ('src/eval/tasks/deepswe_smoke', 'src/deepswe', 'src/utils'):
                 (root / name).mkdir(parents=True, exist_ok=True)
             import shutil
-            for name in ('src/eval/run_final_eval.sh', 'src/utils/aggregate_seed_metrics.py', 'src/eval/tasks/deepswe/evaluate_final_eval.py'):
+            for name in ('src/eval/run_final_eval.sh', 'src/utils/aggregate_seed_metrics.py', 'src/eval/tasks/deepswe_smoke/evaluate_final_eval.py'):
                 shutil.copy2(ROOT / name, root / name)
             (root / 'src/deepswe/final_attempt.py').write_text('''import sys,json
 from pathlib import Path
@@ -122,8 +133,8 @@ p=Path(sys.argv[sys.argv.index('--json-output-file')+1])
 with (p.parent/'attempts').open('a') as f: f.write('attempt\\n')
 p.write_text(json.dumps({'accuracy':0}))
 ''')
-            proc = subprocess.run(['bash', 'src/eval/run_final_eval.sh', 'deepswe', str(root/'model'), str(root/'out'), str(root/'metrics.json')],
-                cwd=root, env=dict(os.environ, EVAL_RUNTIME='deepswe'), capture_output=True, text=True)
+            proc = subprocess.run(['bash', 'src/eval/run_final_eval.sh', 'deepswe_smoke', str(root/'model'), str(root/'out'), str(root/'metrics.json')],
+                cwd=root, env=dict(os.environ, EVAL_RUNTIME='deepswe_smoke'), capture_output=True, text=True)
             self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
             self.assertEqual((root/'out/attempts').read_text(), 'attempt\n')
             self.assertEqual(json.loads((root/'metrics.json').read_text())['accuracy'], 0)

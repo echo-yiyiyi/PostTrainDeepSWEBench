@@ -2,7 +2,7 @@
 set -euo pipefail
 # sbatch copies this script into its spool; --chdir sets the repository root.
 source src/deepswe/common.sh
-[[ -n "${SLURM_JOB_ID:-}" ]] || { echo 'Run through commit_deepswe.sh / sbatch.' >&2; exit 1; }
+[[ -n "${SLURM_JOB_ID:-}" ]] || { echo 'Run through commit_deepswe_smoke.sh / sbatch.' >&2; exit 1; }
 # Host Python orchestrates sibling Singularity executions, never nested containers.
 # Fakeroot SIF extraction on the shared home filesystem can take minutes.
 export DEEPSWE_CONTAINER_TMPDIR="$(mktemp -d /tmp/deepswe-${SLURM_JOB_ID}.XXXXXX)"

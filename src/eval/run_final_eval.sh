@@ -51,8 +51,8 @@ STAGE_MAX_RETRIES=(4 3 2)
 
 EVAL_RUNTIME="${EVAL_RUNTIME:-apptainer}"
 case "${EVAL_RUNTIME}" in
-    apptainer|local|deepswe) ;;
-    *) echo "ERROR: EVAL_RUNTIME must be apptainer, local or deepswe, not '${EVAL_RUNTIME}'" >&2; exit 1 ;;
+    apptainer|local|deepswe_smoke) ;;
+    *) echo "ERROR: EVAL_RUNTIME must be apptainer, local or deepswe_smoke, not '${EVAL_RUNTIME}'" >&2; exit 1 ;;
 esac
 EVAL_ATTEMPT_TIMEOUT_SEC="${EVAL_ATTEMPT_TIMEOUT_SEC:-28800}"
 ANSWER_SANDBOX_LAUNCHER="${ANSWER_SANDBOX_LAUNCHER:-}"
@@ -77,8 +77,8 @@ usage() {
 # Exits if the task cannot be evaluated.
 setup_task() {
     local task="$1"
-    if [ "$EVAL_RUNTIME" = deepswe ] && [ "$task" != deepswe ]; then
-        die "deepswe runtime only supports deepswe"
+    if [ "$EVAL_RUNTIME" = deepswe_smoke ] && [ "$task" != deepswe_smoke ]; then
+        die "deepswe_smoke runtime only supports deepswe_smoke"
     fi
 
     [ -f "src/eval/run_final_eval.sh" ] || die "run $0 from the repo root"
@@ -122,7 +122,7 @@ setup_task() {
         arenahardwriting|healthbench)
             STAGE_MAX_TOKENS_ARGS=("" "--max-new-tokens 12288" "--max-new-tokens 8192")
             ;;
-        gsm8k|humaneval|deepswe)
+        gsm8k|humaneval|deepswe_smoke)
             STAGE_MAX_TOKENS_ARGS=("" "--max-tokens 3000" "--max-tokens 2000")
             ;;
         *)
@@ -139,7 +139,7 @@ setup_task() {
         gpqamain|gsm8k|humaneval)
             DEFAULT_SEEDS=("${FINAL_EVAL_SEEDS[@]:0:3}")
             ;;
-        arenahardwriting|healthbench|deepswe)
+        arenahardwriting|healthbench|deepswe_smoke)
             DEFAULT_SEEDS=("${FINAL_EVAL_SEEDS[0]}")
             ;;
         *)
@@ -314,7 +314,7 @@ run_evaluation() {
     local max_tokens_arg="$1"
     local seed="$2"
     local eval_num="$3"
-    if [ "$EVAL_RUNTIME" = deepswe ]; then
+    if [ "$EVAL_RUNTIME" = deepswe_smoke ]; then
         local token_args=()
         read -r -a token_args <<< "$max_tokens_arg"
         python3 src/deepswe/final_attempt.py --model-path "$MODEL_DIR" --seed "$seed" \
