@@ -116,7 +116,7 @@ def main():
 
     if args.benchmark_id == 'deepswe':
         import sys
-        sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'deepswe'))
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tasks/deepswe'))
         from api_policy import POLICY
         lines = result.splitlines()
         lines = ['9. ' + POLICY.strip() if line.startswith('9. You must NOT use any API key') else line for line in lines]

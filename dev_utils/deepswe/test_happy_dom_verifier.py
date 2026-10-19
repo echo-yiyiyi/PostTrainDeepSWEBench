@@ -5,7 +5,7 @@ from pathlib import Path
 import sys
 import xml.etree.ElementTree as ET
 
-sys.path.insert(0, 'src/deepswe')
+sys.path.insert(0, 'src/eval/tasks/deepswe')
 from runtime import ROOT, TaskEnvironment, container, run
 from evaluation_config import TASK_ID, TEACHING_NAME
 
@@ -16,7 +16,7 @@ def main():
         'happy_dom_verifier_check_' + os.environ['SLURM_JOB_ID'])
     output.mkdir()
     summary = {'task_id': TASK_ID, 'model_evaluation': False, 'checks': {}}
-    solution = ROOT / 'src/deepswe/teaching_materials' / TEACHING_NAME / 'solution'
+    solution = ROOT / 'src/eval/tasks/deepswe_smoke/task_context/teaching_materials' / TEACHING_NAME / 'solution'
     for name, expected in [('baseline', 0), ('oracle', 1), ('syntax_error', 0), ('import_error', 0)]:
         directory = output / name
         task = TaskEnvironment(directory, Path(os.environ['DEEPSWE_TASK_SIF']))

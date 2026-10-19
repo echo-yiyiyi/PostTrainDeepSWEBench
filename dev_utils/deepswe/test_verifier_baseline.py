@@ -2,7 +2,7 @@
 import os
 from pathlib import Path
 import sys
-sys.path.insert(0, 'src/deepswe')
+sys.path.insert(0, 'src/eval/tasks/deepswe')
 from runtime import TaskEnvironment
 output = Path(os.environ['DEEPSWE_STORAGE_RESULTS']) / ('verifier_check_' + os.environ['SLURM_JOB_ID'])
 output.mkdir()

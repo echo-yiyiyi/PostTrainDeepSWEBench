@@ -1,8 +1,11 @@
 """Reuse PostTrain prompt generation and result artifacts in the Ibex launcher."""
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / 'src/eval/tasks/deepswe'))
+
 import os
 import shutil
 import subprocess
-import sys
 from runtime import ROOT, TASK
 from evaluation_config import TASK_ID, EXPERIMENT_MODE, TEACHING_NAME
 
@@ -11,14 +14,14 @@ def prepare_teaching_materials(task, mode=EXPERIMENT_MODE):
     if mode != 'task_specific_training':
         return
     destination = task / 'reference_materials'
-    shutil.copytree(ROOT / 'src/deepswe/teaching_materials' / TEACHING_NAME / 'solution', destination / 'solution')
+    shutil.copytree(ROOT / 'src/eval/tasks/deepswe_smoke/task_context/teaching_materials' / TEACHING_NAME / 'solution', destination / 'solution')
     shutil.copytree(TASK / 'tests', destination / 'tests')
 
 
 def make_prompt(base, train_seconds, mode=EXPERIMENT_MODE):
     if mode != 'task_specific_training':
         return make_general_prompt(base, train_seconds)
-    template = (ROOT / 'src/deepswe/prompts' / f'teach_{TEACHING_NAME}.txt').read_text()
+    template = (ROOT / 'src/eval/tasks/deepswe_smoke/prompts' / f'teach_{TEACHING_NAME}.txt').read_text()
     instruction = (TASK / 'instruction.md').read_text()
     if '<evaluation_task>\n' + instruction + '</evaluation_task>' not in template:
         raise ValueError('Teaching prompt must contain the complete, unchanged task instruction')
@@ -39,47 +42,7 @@ def make_general_prompt(base, train_seconds):
     # The standard generator includes this section when the task has test_data.json.
     # DeepSWE derives the same checker reference from its vendored instruction.
     if full:
-        return prompt + '''
-Full-suite protocol: all 113 Datacurve DeepSWE tasks are held-out tests.
-Do not download, inspect, reconstruct, or train on that dataset, its solutions,
-tests, task-specific commits, or published agent traces. No test material is
-mounted here. You may query aggregate benchmark scores via evaluate.py during
-training, as in PostTrainBench; this never authorizes using test data for training.
-Create independent software engineering data and validate your pipeline locally.
-The designated starting checkpoint is Qwen/Qwen3.5-9B (already post-trained);
-continue training that exact checkpoint, not another model. Its pinned revision
-is recorded in model_profile.json, together with the predownloaded cached_model
-path. Load from that path, or pass the exact revision to from_pretrained; do not
-resolve a floating main revision. Use the supplied templates/qwen3_5.jinja
-and mini_swe_bash_tool.json for text-only native tool conversations, with
-enable_thinking=False. The final evaluator uses mini-swe-agent, 32768 total
-context tokens and 4000 output tokens per call. Shell calls are independent.
-Commit edits before echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT, issued alone.
-Use AutoModelForImageTextToText/Qwen3_5ForConditionalGeneration as appropriate
-for the supplied Transformers version; this is not a Qwen3 architecture.
-Export complete Hugging Face weights, config, tokenizer and processor files
-to final_model/. Merge adapters, retain the architecture and all required
-components, and verify reload using the starting environment before finishing.
-Environment and commands (same writable-venv and host-bridge setup as smoke):
-- Work in /home/ben/task. Python is /home/ben/.venv/bin/python (also first on PATH).
-- Install experimental packages with:
-  uv pip install --python /home/ben/.venv/bin/python PACKAGE
-- Check remaining time with bash timer.sh; inspect the allocated GPU with nvidia-smi.
-- After exporting a COMPLETE checkpoint and freeing GPU memory, try:
-  python evaluate.py --model-path final_model --templates-dir templates --limit 1 --json-output-file trial_metrics.json
-- --limit N evaluates a deterministic prefix of N tasks; omit it or pass -1 for
-  all 113. --max-tokens defaults to 4000 per model reply. Trials run sequentially,
-  may be slow, count against your training budget, and are cancelled at the deadline.
-- evaluate.py contacts the authenticated host bridge. Do not launch containers,
-  install Docker, or start your own official evaluation server inside the sandbox.
-- Task containers are separate from the training container: packages installed
-  here are not available to the evaluated coding agent. Do not leave commands
-  that depend on your training workspace in its generated task trajectories.
-- Trial responses contain aggregate scores, not task questions, reference answers,
-  tests or per-task traces. Full host diagnostics remain outside this sandbox.
-Independent judges and the complete final evaluation execute after training.
-
-'''
+        return prompt + '\n' + (ROOT / 'src/eval/tasks/deepswe/prompt.txt').read_text()
     if '## Decontamination Tool' not in prompt:
         prompt += ('\nThe held-out test_data.json at ../test_data.json is ONLY input to '
             '../contamination_check.py, not training data. Reading and running these two files '

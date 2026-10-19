@@ -1,9 +1,13 @@
 """Ibex post-training run (Codex -> checkpoint -> DeepSWE)."""
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / 'src/eval/tasks/deepswe'))
+
+
 import json
 import os
-from pathlib import Path
 import re
 import shutil
 import subprocess
@@ -23,10 +27,10 @@ TRAIN_ENV = {'PATH': TRAIN_PATH, 'VIRTUAL_ENV': '/home/ben/.venv',
 def prepare_training_home(home, modern=False):
     uv = ROOT / '.cache/deepswe-tools/uv-0.9.7/uv'
     if not uv.is_file():
-        raise RuntimeError('Run bash src/deepswe/prepare_uv.sh on the submission node first')
+        raise RuntimeError('Run bash cluster/ibex/deepswe/prepare_uv.sh on the submission node first')
     (home / '.local/bin').mkdir(parents=True, exist_ok=True)
     shutil.copy2(uv, home / '.local/bin/uv')
-    shutil.copy2(ROOT / 'src/deepswe/setup_training_env.sh', home / 'setup_training_env.sh')
+    shutil.copy2(ROOT / 'cluster/ibex/deepswe/setup_training_env.sh', home / 'setup_training_env.sh')
     shutil.copytree(ROOT / 'containers/other_home_data/.codex', home / '.codex')
     codex_config = home / '.codex/config.toml'
     # Update the shell policy too: Codex overrides its inherited environment here.
@@ -102,7 +106,7 @@ def main():
         ['bash', '-c', f'test -d /app/.git && test "$(git -C /app -c safe.directory=/app rev-parse HEAD)" = {BASE_COMMIT} && node --version && python3 --version'])
     for source, destination in [
         ('agents/codex/solve.sh', home / 'agent_solve.sh'),
-        ('src/deepswe/start_agent.sh', home / 'start_agent.sh'),
+        ('cluster/ibex/deepswe/start_agent.sh', home / 'start_agent.sh'),
         ('src/utils/update_agent_cli.sh', home / 'update_agent_cli.sh'),
         ('src/eval/tasks/' + ('deepswe' if full else 'deepswe_smoke') + '/evaluate.py', task / 'evaluate.py'),
         ('src/judges/judge_tools/contamination_check.py', home / 'contamination_check.py')]:
@@ -131,8 +135,8 @@ def main():
         protocol = protocol.replace('templates/qwen3.jinja', 'templates/qwen3_5.jinja')
         protocol += '\nQwen3.5 uses XML function/parameter blocks inside tool_call, not Qwen3 JSON tool blocks. Always render conversations with the provided template and enable_thinking=False. Training trials use evaluate.py and return aggregate scores; final evaluation covers all 113 tasks after training.\n'
     (task / 'evaluation_protocol.txt').write_text(protocol)
-    shutil.copy2(ROOT / 'src/deepswe/mini_swe/mini.yaml', task / 'mini_swe_config.yaml')
-    shutil.copy2(ROOT / 'src/deepswe/mini_swe/bash_tool.json', task / 'mini_swe_bash_tool.json')
+    shutil.copy2(ROOT / 'src/eval/tasks/deepswe/mini_swe/mini.yaml', task / 'mini_swe_config.yaml')
+    shutil.copy2(ROOT / 'src/eval/tasks/deepswe/mini_swe/bash_tool.json', task / 'mini_swe_bash_tool.json')
     public_eval_config = dict(EVAL_CONFIG)
     if full:
         public_eval_config.update(gpu_memory_utilization=0.8, enable_thinking=False,
@@ -191,7 +195,7 @@ def main():
         status['phase'] = 'judges'
         (result / 'status.json').write_text(json.dumps(status, indent=2))
         with (result / 'judges.log').open('w') as log:
-            subprocess.run(['bash', str(ROOT / 'src/deepswe/judge.sh'), str(result)],
+            subprocess.run(['bash', str(ROOT / 'src/judges/deepswe/judge.sh'), str(result)],
                            cwd=ROOT, stdout=log, stderr=subprocess.STDOUT, check=True)
         status['judges_complete'] = json.loads((result / 'judges_status.json').read_text())['complete']
         if not (task / 'final_model/config.json').is_file():

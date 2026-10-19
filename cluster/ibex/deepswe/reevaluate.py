@@ -1,8 +1,11 @@
 """Evaluate an existing smoke-run checkpoint without invoking the training agent."""
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / 'src/eval/tasks/deepswe'))
+
 import argparse
 import json
 import os
-from pathlib import Path
 import time
 
 from runtime import resolve_checkpoint

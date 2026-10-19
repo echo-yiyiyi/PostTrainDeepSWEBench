@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 import sys
 import subprocess
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / 'src/eval/tasks/deepswe'))
 from runtime import container, run
 
 home, output = map(Path, sys.argv[1:])

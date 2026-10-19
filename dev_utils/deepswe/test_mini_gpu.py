@@ -9,7 +9,8 @@ import secrets
 import sys
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / 'src/deepswe'))
+sys.path.insert(0, str(ROOT / 'src/eval/tasks/deepswe'))
+sys.path.insert(0, str(ROOT / 'cluster/ibex/deepswe'))
 from runtime import Bridge, EVAL_CONFIG, TaskEnvironment, cache_overlay
 from evaluation_config import TASK_ID, EXPERIMENT_MODE
 

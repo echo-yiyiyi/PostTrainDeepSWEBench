@@ -7,6 +7,14 @@ We introduce PostTrainBench, a benchmark that measures the ability of CLI agents
 > [!IMPORTANT]
 > **Run it on cloud GPUs via [Harbor](https://github.com/harbor-framework/harbor).** This repository's reference pipeline targets our HPC cluster (HTCondor), but `src/harbor_adapter/` runs the full benchmark (same prompt, judges and evaluation) on Modal, with no cluster needed. See [its README](src/harbor_adapter/README.md).
 
+## DeepSWE on Ibex
+
+This checkout additionally supports [the full DeepSWE benchmark](src/eval/tasks/deepswe/README.md)
+and a separate [single-task smoke experiment](src/eval/tasks/deepswe_smoke/README.md).
+Their task files follow the existing `src/eval/tasks/` layout; cluster setup is
+in [cluster/ibex/deepswe](cluster/ibex/deepswe/README.md). See root `example.env`
+for configuration and `src/commit_utils/commit_deepswe*.sh` for submission.
+
 ## Scaffolds
 
 Agents are run through one of 4 CLI scaffolds: Claude Code, Codex CLI, Gemini CLI, and OpenCode. 

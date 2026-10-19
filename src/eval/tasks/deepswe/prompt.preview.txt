@@ -86,4 +86,3 @@ Environment and commands (same writable-venv and host-bridge setup as smoke):
 - Trial responses contain aggregate scores, not task questions, reference answers,
   tests or per-task traces. Full host diagnostics remain outside this sandbox.
 Independent judges and the complete final evaluation execute after training.
-

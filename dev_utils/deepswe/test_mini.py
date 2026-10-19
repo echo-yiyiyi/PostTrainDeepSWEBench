@@ -9,7 +9,8 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / 'src/deepswe'))
+sys.path.insert(0, str(ROOT / 'src/eval/tasks/deepswe'))
+sys.path.insert(0, str(ROOT / 'cluster/ibex/deepswe'))
 import mini_eval
 from evaluation_config import defaults, TASK_DIRECTORY
 from litellm import ModelResponse
@@ -87,9 +88,9 @@ class MiniTests(unittest.TestCase):
 
     def test_vendored_prompt_matches_pinned_package(self):
         native = importlib.resources.files('minisweagent').joinpath('config/mini.yaml').read_bytes()
-        self.assertEqual(native, (ROOT / 'src/deepswe/mini_swe/mini.yaml').read_bytes())
+        self.assertEqual(native, (ROOT / 'src/eval/tasks/deepswe/mini_swe/mini.yaml').read_bytes())
         from minisweagent.models.utils.actions_toolcall import BASH_TOOL
-        self.assertEqual(BASH_TOOL, json.loads((ROOT / 'src/deepswe/mini_swe/bash_tool.json').read_text()))
+        self.assertEqual(BASH_TOOL, json.loads((ROOT / 'src/eval/tasks/deepswe/mini_swe/bash_tool.json').read_text()))
 
     def test_inspect_scores_native_context_exhaustion_once(self):
         (self.directory / 'evaluation_config.json').write_text(json.dumps(self.config))

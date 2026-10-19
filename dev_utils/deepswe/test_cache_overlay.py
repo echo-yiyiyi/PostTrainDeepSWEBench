@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 import sys
 import tempfile
-sys.path.insert(0, 'src/deepswe')
+sys.path.insert(0, 'src/eval/tasks/deepswe')
 from runtime import cache_overlay, container, run
 
 with tempfile.TemporaryDirectory(dir=os.environ['DEEPSWE_STORAGE_RESULTS'], prefix='cache-check-') as directory:

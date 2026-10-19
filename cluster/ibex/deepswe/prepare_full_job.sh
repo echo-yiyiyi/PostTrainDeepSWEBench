@@ -1,10 +1,10 @@
 #!/bin/bash
 set -euo pipefail
-source src/deepswe/common.sh
+source cluster/ibex/deepswe/common.sh
 export SINGULARITY_TMPDIR="$(mktemp -d /tmp/deepswe-qwen35-${SLURM_JOB_ID}.XXXXXX)"
 export DEEPSWE_CONTAINER_TMPDIR="$SINGULARITY_TMPDIR"
 trap 'rm -rf -- "$SINGULARITY_TMPDIR"' EXIT
-"$DEEPSWE_MINI_PYTHON" src/deepswe/prepare_full.py
+"$DEEPSWE_MINI_PYTHON" cluster/ibex/deepswe/prepare_full.py
 candidate="$DEEPSWE_STORAGE_IMAGES/qwen35_build_${SLURM_JOB_ID}.sif"
 singularity build --fakeroot "$candidate" containers/deepswe_qwen35.def
 python3 dev_utils/deepswe/check_qwen35.py "$candidate"

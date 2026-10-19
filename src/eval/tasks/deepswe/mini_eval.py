@@ -24,7 +24,7 @@ from minisweagent.models.litellm_model import LitellmModel
 
 from evaluation_config import MINI_REVISION, TASK_DIRECTORY
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT / 'src/eval'))
 from per_sample_seed import sample_seed
 

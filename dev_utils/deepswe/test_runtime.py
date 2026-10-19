@@ -15,7 +15,8 @@ import urllib.error
 import urllib.request
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / 'src/deepswe'))
+sys.path.insert(0, str(ROOT / 'src/eval/tasks/deepswe'))
+sys.path.insert(0, str(ROOT / 'cluster/ibex/deepswe'))
 from runtime import Bridge, TaskEnvironment, container, resolve_checkpoint
 
 
@@ -87,9 +88,9 @@ class RuntimeTests(unittest.TestCase):
     def test_config_is_checkout_local_and_rejects_external_images(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / 'project'
-            scripts = root / 'src/deepswe'
+            scripts = root / 'cluster/ibex/deepswe'
             scripts.mkdir(parents=True)
-            shutil.copy2(ROOT / 'src/deepswe/common.sh', scripts / 'common.sh')
+            shutil.copy2(ROOT / 'cluster/ibex/deepswe/common.sh', scripts / 'common.sh')
             sibling = Path(tmp) / 'PostTrainBench'
             sibling.mkdir()
             (sibling / '.env').write_text('OPENAI_API_KEY=must_not_be_read\n')
@@ -109,9 +110,9 @@ class RuntimeTests(unittest.TestCase):
     def test_explicit_external_storage_and_symlink_escape(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / 'project'
-            scripts = root / 'src/deepswe'
+            scripts = root / 'cluster/ibex/deepswe'
             scripts.mkdir(parents=True)
-            shutil.copy2(ROOT / 'src/deepswe/common.sh', scripts / 'common.sh')
+            shutil.copy2(ROOT / 'cluster/ibex/deepswe/common.sh', scripts / 'common.sh')
             images = Path(tmp) / 'datasets'
             images.mkdir()
             results = Path(tmp) / 'results'

@@ -5,7 +5,8 @@ from pathlib import Path
 import sys
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / 'src/deepswe'))
+sys.path.insert(0, str(ROOT / 'src/eval/tasks/deepswe'))
+sys.path.insert(0, str(ROOT / 'cluster/ibex/deepswe'))
 from runtime import container, run
 from run import prepare_training_home, TRAIN_ENV
 
@@ -33,7 +34,7 @@ for phase, image in [('train', candidate), ('eval', Path(os.environ['DEEPSWE_EVA
         ('bash /home/ben/setup_training_env.sh && ' if phase == 'train' else '') +
         f'python /probe.py {phase}']
     if phase == 'eval':
-        binds += [f'{ROOT / "src/deepswe"}:/harness:ro',
+        binds += [f'{ROOT / "src/eval/tasks/deepswe"}:/harness:ro',
             f'{ROOT / "src/eval/per_sample_seed.py"}:/harness_seed.py:ro',
             f'{ROOT / "dev_utils/deepswe/test_inspect.py"}:/inspect_probe.py:ro']
         command[-1] += ' && python /inspect_probe.py'

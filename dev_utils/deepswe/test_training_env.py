@@ -6,7 +6,8 @@ import tomllib
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / 'src/deepswe'))
+sys.path.insert(0, str(ROOT / 'src/eval/tasks/deepswe'))
+sys.path.insert(0, str(ROOT / 'cluster/ibex/deepswe'))
 from run import prepare_training_home, TRAIN_ENV
 from runtime import container, run
 

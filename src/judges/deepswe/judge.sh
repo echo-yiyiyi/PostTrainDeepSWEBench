@@ -1,7 +1,7 @@
 #!/bin/bash
 # Shared PostTrain judge policies; only the process launcher is Ibex-specific.
 set -euo pipefail
-source src/deepswe/common.sh
+source cluster/ibex/deepswe/common.sh
 source src/judges/judge_lib.sh
 result="$(realpath -- "$1")"
 judge_home="$result/judge_home"
@@ -30,7 +30,7 @@ run_judge_exec() {
     local job_dir="$1" job_tmp="$2" output_json="$3" prompt="$4"
     printf '%s' "$prompt" > "$job_dir/judge_prompt.txt"
     DEEPSWE_JUDGE_MODEL="$JUDGE_MODEL" DEEPSWE_JUDGE_EFFORT="$JUDGE_REASONING_EFFORT" \
-    DEEPSWE_JUDGE_CLI="$JUDGE_CODEX_VERSION" python3 src/deepswe/judge_exec.py \
+    DEEPSWE_JUDGE_CLI="$JUDGE_CODEX_VERSION" python3 src/judges/deepswe/judge_exec.py \
         "$job_dir" "$output_json"
 }
 model="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["model_to_train"])' "$result/run_config.json")"

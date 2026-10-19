@@ -153,7 +153,7 @@ def fill_api_usage(prompt: str, benchmark_id: str | None,
         exception = API_JUDGE_EXCEPTION_TEXT
     if benchmark_id == 'deepswe':
         import sys
-        sys.path.insert(0, str(REPO_ROOT / 'src/deepswe'))
+        sys.path.insert(0, str(REPO_ROOT / 'src/eval/tasks/deepswe'))
         from api_policy import POLICY
         # Use a dedicated policy rather than contradicting the ordinary blanket ban.
         prompt = ("Judge hosted API usage from ../solve_parsed.txt and the saved task artifacts.\n"

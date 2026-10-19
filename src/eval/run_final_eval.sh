@@ -317,7 +317,7 @@ run_evaluation() {
     if [ "$EVAL_RUNTIME" = deepswe_smoke ]; then
         local token_args=()
         read -r -a token_args <<< "$max_tokens_arg"
-        python3 src/deepswe/final_attempt.py --model-path "$MODEL_DIR" --seed "$seed" \
+        python3 src/eval/tasks/deepswe/final_attempt.py --model-path "$MODEL_DIR" --seed "$seed" \
             --json-output-file "$OUTPUT_DIR/metrics_seed${seed}.json" "${token_args[@]}" \
             > "$OUTPUT_DIR/final_eval_seed${seed}_${eval_num}.txt" 2>&1
         return $?

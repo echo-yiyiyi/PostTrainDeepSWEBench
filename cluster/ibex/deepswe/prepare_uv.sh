@@ -1,7 +1,7 @@
 #!/bin/bash
 # Run on the submission/login node, without root or a GPU.
 set -euo pipefail
-deepswe_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+deepswe_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 [[ "$(uname -m)" == x86_64 ]] || { echo 'This uv artifact requires x86_64' >&2; exit 1; }
 destination="$deepswe_root/.cache/deepswe-tools/uv-0.9.7"
 if [[ -x "$destination/uv" ]] && [[ "$("$destination/uv" --version)" == 'uv 0.9.7' ]]; then

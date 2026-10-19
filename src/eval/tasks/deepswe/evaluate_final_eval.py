@@ -6,7 +6,7 @@ The agent-facing evaluate.py exposes aggregate training-trial scores via the hos
 """
 from pathlib import Path
 import sys
-sys.path.insert(0, str(Path(__file__).resolve().parents[3] / 'deepswe'))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from full_evaluate import main
 
 if __name__ == '__main__':

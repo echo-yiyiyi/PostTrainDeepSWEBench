@@ -11,7 +11,8 @@ import tempfile
 import time
 import urllib.request
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / 'src/deepswe'))
+sys.path.insert(0, str(ROOT / 'src/eval/tasks/deepswe'))
+sys.path.insert(0, str(ROOT / 'cluster/ibex/deepswe'))
 from runtime import container, run, clean_env
 from model_profiles import serving_args, QWEN35_ID, QWEN35_REVISION
 
@@ -26,7 +27,7 @@ with tempfile.TemporaryDirectory(dir=os.environ['DEEPSWE_CONTAINER_TMPDIR']) as 
     with (report / 'train.log').open('w') as log:
         run(container(image, tmp / 'train_home', [f'{Path(assets["snapshot"]).parent.parent}:/hf_model:ro',
             f'{out}:/output', f'{ROOT / "dev_utils/deepswe/qwen35_probe.py"}:/probe.py:ro',
-            f'{ROOT / "src/deepswe/setup_training_env.sh"}:/setup.sh:ro'], gpu=True, env={'MODEL_SOURCE': '/hf_model/snapshots/' + QWEN35_REVISION}) +
+            f'{ROOT / "cluster/ibex/deepswe/setup_training_env.sh"}:/setup.sh:ro'], gpu=True, env={'MODEL_SOURCE': '/hf_model/snapshots/' + QWEN35_REVISION}) +
             ['bash', '-c', 'bash /setup.sh && /home/ben/.venv/bin/python /probe.py'], timeout=1800, stdout=log)
     (report / 'train_probe.json').write_bytes((out / 'train_probe.json').read_bytes())
     with socket.socket() as sock:
@@ -55,7 +56,7 @@ with tempfile.TemporaryDirectory(dir=os.environ['DEEPSWE_CONTAINER_TMPDIR']) as 
                     if time.monotonic() >= deadline:
                         raise TimeoutError('vLLM readiness')
                     time.sleep(2)
-            schema = json.loads((ROOT / 'src/deepswe/mini_swe/bash_tool.json').read_text())
+            schema = json.loads((ROOT / 'src/eval/tasks/deepswe/mini_swe/bash_tool.json').read_text())
             body = {'model':'probe', 'messages':[{'role':'user','content':'Use the bash tool once to run: printf hello'}],
                     'tools':[schema], 'max_tokens':4000, 'temperature':0}
             req = urllib.request.Request(f'http://127.0.0.1:{port}/v1/chat/completions', data=json.dumps(body).encode(),

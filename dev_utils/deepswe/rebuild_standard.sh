@@ -2,7 +2,7 @@
 # Submit on an Ibex compute node; never overwrite the active image here.
 set -euo pipefail
 cd "${SLURM_SUBMIT_DIR:?Submit from the repository root}"
-source src/deepswe/common.sh
+source cluster/ibex/deepswe/common.sh
 build_dir="$DEEPSWE_STORAGE_RESULTS/image_build_${SLURM_JOB_ID}"
 image_dir="$DEEPSWE_STORAGE_IMAGES/build_${SLURM_JOB_ID}"
 mkdir -p "$image_dir"

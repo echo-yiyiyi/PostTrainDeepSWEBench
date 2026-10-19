@@ -12,7 +12,8 @@ import urllib.error
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / 'src/deepswe'))
+sys.path.insert(0, str(ROOT / 'src/eval/tasks/deepswe'))
+sys.path.insert(0, str(ROOT / 'cluster/ibex/deepswe'))
 from runtime import run
 from training_support import make_prompt, make_general_prompt, prepare_teaching_materials
 from runtime import TASK
@@ -67,7 +68,7 @@ class FrameworkTests(unittest.TestCase):
         self.assertIn('official reference solution and verifier tests', prompt)
         self.assertIn('NOT available to that model at evaluation time', prompt)
         self.assertNotIn('{base_model}', prompt)
-        self.assertEqual(prompt, (ROOT/'src/deepswe/prompts'/f'teach_{TEACHING_NAME}.rendered.txt').read_text())
+        self.assertEqual(prompt, (ROOT/'src/eval/tasks/deepswe_smoke/prompts'/f'teach_{TEACHING_NAME}.rendered.txt').read_text())
         with tempfile.TemporaryDirectory() as directory:
             task = Path(directory)
             prepare_teaching_materials(task, mode='general')
@@ -76,7 +77,7 @@ class FrameworkTests(unittest.TestCase):
             for name in ('test.patch', 'test.sh', 'grader.py', 'config.json'):
                 self.assertEqual((task/'reference_materials/tests'/name).read_bytes(), (TASK/'tests'/name).read_bytes())
             self.assertEqual((task/'reference_materials/solution/solution.patch').read_bytes(),
-                (ROOT/'src/deepswe/teaching_materials'/TEACHING_NAME/'solution/solution.patch').read_bytes())
+                (ROOT/'src/eval/tasks/deepswe_smoke/task_context/teaching_materials'/TEACHING_NAME/'solution/solution.patch').read_bytes())
 
     def test_http_error_keeps_diagnostic(self):
         import importlib.util
@@ -103,13 +104,13 @@ class FrameworkTests(unittest.TestCase):
             launcher = shim / 'python3'
             import shlex
             launcher.write_text('#!/bin/bash\n'
-                'if [[ "$1" == src/deepswe/judge_exec.py ]]; then\n'
+                'if [[ "$1" == src/judges/deepswe/judge_exec.py ]]; then\n'
                 '  printf \'{"mock_framework_test":true}\\n\' > "$2/task/judgement.json"\n'
                 '  : > "$3"\n'
                 '  exit 0\n'
                 'fi\nexec ' + shlex.quote(sys.executable) + ' "$@"\n')
             launcher.chmod(0o755)
-            proc = subprocess.run(['bash', 'src/deepswe/judge.sh', str(root)], cwd=ROOT,
+            proc = subprocess.run(['bash', 'src/judges/deepswe/judge.sh', str(root)], cwd=ROOT,
                 env=dict(os.environ, PATH=str(shim)+os.pathsep+os.environ['PATH']),
                 capture_output=True, text=True, timeout=120)
             self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
@@ -122,12 +123,12 @@ class FrameworkTests(unittest.TestCase):
         # and metrics aggregation, with no GPU commands or container launches.
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            for name in ('src/eval/tasks/deepswe_smoke', 'src/deepswe', 'src/utils'):
+            for name in ('src/eval/tasks/deepswe_smoke', 'src/eval/tasks/deepswe', 'src/utils'):
                 (root / name).mkdir(parents=True, exist_ok=True)
             import shutil
             for name in ('src/eval/run_final_eval.sh', 'src/utils/aggregate_seed_metrics.py', 'src/eval/tasks/deepswe_smoke/evaluate_final_eval.py'):
                 shutil.copy2(ROOT / name, root / name)
-            (root / 'src/deepswe/final_attempt.py').write_text('''import sys,json
+            (root / 'src/eval/tasks/deepswe/final_attempt.py').write_text('''import sys,json
 from pathlib import Path
 p=Path(sys.argv[sys.argv.index('--json-output-file')+1])
 with (p.parent/'attempts').open('a') as f: f.write('attempt\\n')

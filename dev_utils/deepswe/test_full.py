@@ -8,7 +8,8 @@ import tempfile
 import unittest
 from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / 'src/deepswe'))
+sys.path.insert(0, str(ROOT / 'src/eval/tasks/deepswe'))
+sys.path.insert(0, str(ROOT / 'cluster/ibex/deepswe'))
 sys.path.insert(0, str(ROOT / 'src/judges'))
 from full_suite import aggregate, load_manifest, verify_task, REVISION, TASK_COUNT
 from model_profiles import serving_args, QWEN35_ID
@@ -20,6 +21,7 @@ class FullTests(unittest.TestCase):
     def test_full_prompt_no_test_access_or_blanket_api_ban(self):
         with patch.dict(os.environ, DEEPSWE_MODE='full'):
             prompt = make_general_prompt(QWEN35_ID, 36000)
+        self.assertEqual(prompt.strip(), (ROOT / 'src/eval/tasks/deepswe/prompt.preview.txt').read_text().strip())
         self.assertIn('maximum of 10.0 hours', prompt)
         self.assertIn('Codex may act as the synthetic-data pipeline agent', prompt)
         self.assertIn('all 113 Datacurve DeepSWE tasks are held-out tests', prompt)

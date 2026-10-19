@@ -1,7 +1,7 @@
 """Host-side Singularity task execution and trusted evaluation bridge.
 
-Only the selected DeepSWE task is supported. This is a native adapter for its
-Harbor task contract, not a general Pier environment backend.
+Supports the smoke task and manifest-selected full-suite tasks through their
+Harbor task contracts. This is not a general Pier environment backend.
 """
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ from evaluation_config import defaults, TASK_DIRECTORY, BASE_COMMIT, TASK_ID, EX
 from model_profiles import serving_args
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[4]
 TASK = ROOT / 'src/eval/tasks/deepswe_smoke' / TASK_DIRECTORY
 BASE = BASE_COMMIT
 EVAL_CONFIG = defaults(TASK / 'task.toml')
@@ -303,7 +303,7 @@ class Bridge:
 
     def _run_model(self, checkpoint, directory, cache, seed):
         cmd = container(self.images['eval'], directory / 'model_home', [
-            f'{checkpoint}:/model:ro', f'{ROOT / "src/deepswe"}:/harness:ro',
+            f'{checkpoint}:/model:ro', f'{ROOT / "src/eval/tasks/deepswe"}:/harness:ro',
             f'{ROOT / "src/eval/per_sample_seed.py"}:/harness_seed.py:ro',
             f'{ROOT / "src/eval/tasks/deepswe_smoke/evaluate_final_eval.py"}:/evaluate_final_eval.py:ro',
             f'{ROOT / "src/eval/templates"}:/templates:ro',
@@ -322,7 +322,7 @@ class Bridge:
         """Native mini-swe agent on the host; fixed ML SIF serves only local vLLM."""
         python = Path(os.environ['DEEPSWE_MINI_PYTHON'])
         if not python.is_file():
-            raise RuntimeError('Run src/deepswe/prepare_mini.sh before submitting')
+            raise RuntimeError('Run cluster/ibex/deepswe/prepare_mini.sh before submitting')
         with socket.socket() as sock:
             sock.bind(('127.0.0.1', 0))
             port = sock.getsockname()[1]
@@ -366,7 +366,7 @@ class Bridge:
                     'DEEPSWE_WORKER_URL': self.url, 'DEEPSWE_WORKER_TOKEN': self.eval_token,
                     'DEEPSWE_MODEL_URL': base_url, 'DEEPSWE_MODEL_KEY': api_key}
                 with (directory / 'evaluate.log').open('w') as log:
-                    run([str(python), str(ROOT / 'src/deepswe/mini_eval.py'),
+                    run([str(python), str(ROOT / 'src/eval/tasks/deepswe/mini_eval.py'),
                         '--output', str(directory), '--seed', str(seed)], env=env,
                         timeout=config['agent_timeout_seconds'] + config['verifier_timeout_seconds'] + 60,
                         stdout=log, cancel=self.cancel)

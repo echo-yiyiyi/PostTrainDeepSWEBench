@@ -482,3 +482,20 @@ lot of api credits for openai.
 Add your own notes to the directory `/home/brank/Documents/agents_notes` and index them via
 `/home/brank/Documents/agents_notes/index.md`. Add those notes for other agents and for yourself
 for future use.
+
+## DeepSWE checkout layout
+
+- `src/eval/tasks/deepswe/`: full-suite metadata, prompt supplement/preview, policies,
+  model profiles and host-only evaluation implementation; all 113 tasks remain test data.
+- `src/eval/tasks/deepswe_smoke/`: smoke metadata, task selection in `config.py`,
+  teaching prompts and explicitly exposed reference material in `task_context/`.
+- `cluster/ibex/deepswe/`: Slurm job scripts, preparation and training orchestration.
+- `src/commit_utils/commit_deepswe*.sh`: stable submission entry points.
+- `src/judges/deepswe/`: Ibex process adapter for the shared judges.
+- Root `.env` / `example.env`: local configuration / public settings example.
+
+Do not put full-suite host evaluator modules in `evaluation_code/`: the generic
+launcher copies that directory into the training sandbox. Task prompts and tests
+must stay in the host-only external suite cache. Two forwards under `src/deepswe/`
+only support preparation job 54006896, spooled before the directory migration;
+new code must use the canonical directories above.
