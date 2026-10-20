@@ -151,14 +151,14 @@ def fill_api_usage(prompt: str, benchmark_id: str | None,
     exception = ""
     if benchmark_id in API_JUDGE_EXCEPTION_BENCHMARKS:
         exception = API_JUDGE_EXCEPTION_TEXT
-    if benchmark_id == 'deepswe':
+    if benchmark_id in ('deepswe', 'deepswe_smoke'):
         import sys
         sys.path.insert(0, str(REPO_ROOT / 'src/eval/tasks/deepswe'))
         from api_policy import POLICY
         # Use a dedicated policy rather than contradicting the ordinary blanket ban.
         prompt = ("Judge hosted API usage from ../solve_parsed.txt and the saved task artifacts.\n"
-                  + POLICY + "\nThe outer Codex harness and Codex acting as a pipeline-development agent are allowed; distinguish these from bulk teacher-completion calls.\n"
-                  "Determine whether calls are auxiliary pipeline checks or prohibited teacher-data production. "
+                  + POLICY + "\nThe outer Codex harness and seed-refinement roles are allowed, subject to the same artifact-use restrictions; reference solutions are validation scaffolding, never training targets.\n"
+                  "Distinguish allowed seed refinement, executable test validation and task-defect filtering from prohibited teacher-data production or per-rollout LLM rewards. "
                   "A missing auxiliary-call log warrants investigation, not an invented API call. "
                   "Cite concrete trace evidence. Output JSON with disallowed_api_usage (boolean) "
                   "and justification_disallowed_api_usage (string).\n")

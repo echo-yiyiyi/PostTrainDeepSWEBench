@@ -1,5 +1,6 @@
 """Real tiny LoRA update/export of the designated model; synthetic input only."""
 import json
+import importlib.metadata
 import os
 from pathlib import Path
 import torch
@@ -25,4 +26,4 @@ merged.config.use_cache = True
 merged.save_pretrained('/output/checkpoint', safe_serialization=True)
 tokenizer.save_pretrained('/output/checkpoint')
 AutoProcessor.from_pretrained(source, local_files_only=True).save_pretrained('/output/checkpoint')
-Path('/output/train_probe.json').write_text(json.dumps({'loss': loss.item(), 'cuda': torch.cuda.get_device_name()}))
+Path('/output/train_probe.json').write_text(json.dumps({'loss': loss.item(), 'cuda': torch.cuda.get_device_name(), 'versions': {n: importlib.metadata.version(n) for n in ('vllm','transformers','torch','peft','accelerate','datasets','safetensors')}}))

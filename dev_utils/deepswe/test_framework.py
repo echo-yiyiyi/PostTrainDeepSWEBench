@@ -21,13 +21,11 @@ from evaluation_config import TEACHING_NAME, TASK_ID, BASE_COMMIT, TASK_IMAGE
 
 
 class FrameworkTests(unittest.TestCase):
-    def test_selected_task_matches_upstream_contract_and_metadata(self):
+    def test_legacy_teaching_task_still_matches_upstream_contract(self):
         contract = (TASK / 'task.toml').read_text()
         self.assertIn(f'task_id = "{TASK_ID}"', contract)
         self.assertIn(f'base_commit_hash = "{BASE_COMMIT}"', contract)
         self.assertIn(f'docker_image = "{TASK_IMAGE}"', contract)
-        metadata = json.loads((TASK.parent / 'info.json').read_text())
-        self.assertEqual(metadata['task_id'], TASK_ID)
         prompt = make_prompt('Qwen/Qwen3-1.7B-Base', 3600)
         self.assertIn(BASE_COMMIT, prompt)
 
@@ -54,7 +52,9 @@ class FrameworkTests(unittest.TestCase):
     def test_shared_prompt_keeps_rules_and_ibex_install_path(self):
         prompt = make_general_prompt('Qwen/Qwen3-1.7B-Base', 3600)
         self.assertIn('Do not modify evaluate.py or templates/', prompt)
-        self.assertIn('must NOT use any API key', prompt)
+        self.assertIn('Examples of allowed seed-refinement roles:', prompt)
+        self.assertIn('You may use any, all or none of them', prompt)
+        self.assertIn('must not directly manufacture training data', prompt)
         self.assertIn('one held-out repository task', prompt)
         self.assertIn('uv pip install --python', prompt)
         self.assertNotIn('H100', prompt)

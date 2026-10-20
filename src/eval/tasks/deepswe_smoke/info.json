@@ -1,5 +1,5 @@
 {
-  "benchmark": "DeepSWE single-task smoke test",
+  "benchmark": "DeepSWE single-task held-out smoke test",
   "required_api_keys": [],
   "disallowed_data_examples": [
     "DeepSWE task prompts, reference solutions, hidden tests, or derivatives of them"
@@ -7,13 +7,16 @@
   "allowed_data_examples": [
     "Independently sourced or synthesized software engineering training examples"
   ],
-  "task_id": "happy-dom-abort-pending-body-reads",
   "upstream_commit": "0b9fabbb63b9104d678fe965e1632f2dd9eaa2ea",
   "runtime": "cluster/ibex/deepswe/job.sh",
   "smoke_only": true,
-  "experiment_mode": "task_specific_training",
-  "training_task_exposed": true,
-  "held_out_evaluation": false,
-  "reference_solution_exposed": true,
-  "verifier_tests_exposed": true
+  "experiment_mode": "held_out_smoke",
+  "training_task_exposed": false,
+  "held_out_evaluation": true,
+  "reference_solution_exposed": false,
+  "verifier_tests_exposed": false,
+  "model_to_train": "Qwen/Qwen3.5-9B",
+  "api_usage_policy": "limited_pipeline_assistance",
+  "evaluation_timing": "training_trials_and_final",
+  "task_selection": "First task in the pinned full-suite manifest; host-only"
 }

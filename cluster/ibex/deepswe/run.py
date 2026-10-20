@@ -49,6 +49,30 @@ def prepare_training_home(home, modern=False):
     codex_config.write_text('model_reasoning_effort = "low"\n\n' + config)
 
 
+def prepare_protocol_files(home, base, *, full=True, num_tasks=113):
+    from model_profiles import QWEN35_REVISION
+    task = home / 'task'
+    shutil.copytree(ROOT / 'src/eval/templates', task / 'templates')
+    protocol = PROTOCOL
+    if full:
+        protocol = protocol.replace('templates/qwen3.jinja', 'templates/qwen3_5.jinja')
+        protocol += '\nQwen3.5 uses XML function/parameter blocks inside tool_call, not Qwen3 JSON tool blocks. Always render conversations with the provided template and enable_thinking=True. Training trials use evaluate.py and return aggregate scores; final evaluation covers the configured test tasks after training.\n'
+    (task / 'evaluation_protocol.txt').write_text(protocol)
+    shutil.copy2(ROOT / 'src/eval/tasks/deepswe/mini_swe/mini.yaml', task / 'mini_swe_config.yaml')
+    shutil.copy2(ROOT / 'src/eval/tasks/deepswe/mini_swe/bash_tool.json', task / 'mini_swe_bash_tool.json')
+    public_eval_config = dict(EVAL_CONFIG)
+    if full:
+        public_eval_config.update(gpu_memory_utilization=0.8, enable_thinking=True,
+                                  model_to_train=base, num_tasks=num_tasks, training_trials=True)
+    (task / 'evaluation_config.json').write_text(json.dumps(public_eval_config, indent=2))
+    if full:
+        (task / 'model_profile.json').write_text(json.dumps(dict(model=base, revision=QWEN35_REVISION,
+            chat_template='templates/qwen3_5.jinja', enable_thinking=True,
+            cached_model='/home/ben/hf_cache/hub/models--Qwen--Qwen3.5-9B/snapshots/' + QWEN35_REVISION), indent=2))
+    else:
+        prepare_teaching_materials(task)
+
+
 def stop_monitor(process):
     import signal
     if process.poll() is None:
@@ -58,9 +82,10 @@ def stop_monitor(process):
 
 def main():
     started = time.monotonic()
-    full = os.environ.get('DEEPSWE_MODE') == 'full'
-    train_seconds = int(os.environ.get('DEEPSWE_TRAIN_SECONDS', '36000' if full else '3600'))
-    if not full:
+    smoke = os.environ.get('DEEPSWE_MODE') == 'smoke'
+    full = os.environ.get('DEEPSWE_MODE') in ('full', 'smoke')
+    train_seconds = int(os.environ.get('DEEPSWE_TRAIN_SECONDS', '36000' if full and not smoke else '3600'))
+    if not full or smoke:
         train_seconds = min(train_seconds, 3600)
     if train_seconds <= 0:
         raise ValueError("DEEPSWE_TRAIN_SECONDS must be positive")
@@ -93,12 +118,18 @@ def main():
             raise ValueError('The full-suite profile currently targets Qwen/Qwen3.5-9B')
         suite = load_manifest(Path(os.environ['DEEPSWE_SUITE_MANIFEST']))
         shutil.copy2(os.environ['DEEPSWE_SUITE_MANIFEST'], result / 'suite_manifest.json')
+        if smoke:
+            suite = dict(suite, tasks=suite['tasks'][:1])
         config.update(benchmark='deepswe', num_tasks=len(suite['tasks']),
                       task_id=None, experiment_mode='full_held_out', single_task_test=False,
                       training_task_exposed=False, reference_solution_exposed=False,
                       verifier_tests_exposed=False, held_out_evaluation=True,
                       evaluation_timing='training_trials_and_final', model_revision=QWEN35_REVISION,
+                      enable_thinking=True,
                       api_usage_policy='limited_pipeline_assistance')
+        if smoke:
+            config.update(benchmark='deepswe_smoke', single_task_test=True,
+                          smoke_test=True, final_task_ids=[suite['tasks'][0]['id']])
     (result / 'run_config.json').write_text(json.dumps(config, indent=2))
     # Verify task image and no-network support before spending time training.
     if not full:
@@ -129,25 +160,7 @@ def main():
         bridge = Bridge(home, result, images)
     if bridge:
         bridge.start()
-    shutil.copytree(ROOT / 'src/eval/templates', task / 'templates')
-    protocol = PROTOCOL
-    if full:
-        protocol = protocol.replace('templates/qwen3.jinja', 'templates/qwen3_5.jinja')
-        protocol += '\nQwen3.5 uses XML function/parameter blocks inside tool_call, not Qwen3 JSON tool blocks. Always render conversations with the provided template and enable_thinking=False. Training trials use evaluate.py and return aggregate scores; final evaluation covers all 113 tasks after training.\n'
-    (task / 'evaluation_protocol.txt').write_text(protocol)
-    shutil.copy2(ROOT / 'src/eval/tasks/deepswe/mini_swe/mini.yaml', task / 'mini_swe_config.yaml')
-    shutil.copy2(ROOT / 'src/eval/tasks/deepswe/mini_swe/bash_tool.json', task / 'mini_swe_bash_tool.json')
-    public_eval_config = dict(EVAL_CONFIG)
-    if full:
-        public_eval_config.update(gpu_memory_utilization=0.8, enable_thinking=False,
-                                  model_to_train=base, num_tasks=113, training_trials=True)
-    (task / 'evaluation_config.json').write_text(json.dumps(public_eval_config, indent=2))
-    if full:
-        (task / 'model_profile.json').write_text(json.dumps(dict(model=base, revision=QWEN35_REVISION,
-            chat_template='templates/qwen3_5.jinja', enable_thinking=False,
-            cached_model='/home/ben/hf_cache/hub/models--Qwen--Qwen3.5-9B/snapshots/' + QWEN35_REVISION), indent=2))
-    else:
-        prepare_teaching_materials(task)
+    prepare_protocol_files(home, base, full=full, num_tasks=len(suite['tasks']) if full else 1)
     prompt = make_prompt(base, train_seconds, mode='general' if full else EXPERIMENT_MODE)
     (result / 'prompt.txt').write_text(prompt)
     (home / 'training_prompt.txt').write_text(prompt)
@@ -163,7 +176,7 @@ def main():
     for key in ('CODEX_CLI_VERSION', 'POST_TRAIN_BENCH_SKIP_CLI_UPDATE'):
         if key in os.environ:
             env[key] = os.environ[key]
-    status = {'status': 'running', 'single_task_test': not full}
+    status = {'status': 'running', 'single_task_test': smoke or not full}
     monitor = subprocess.Popen(['bash', str(ROOT / 'src/utils/system_monitor.sh')], cwd=result,
                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
     try:
@@ -200,12 +213,19 @@ def main():
         status['judges_complete'] = json.loads((result / 'judges_status.json').read_text())['complete']
         if not (task / 'final_model/config.json').is_file():
             raise RuntimeError('Codex did not produce final_model/config.json')
-        status['phase'] = 'awaiting_final_evaluation' if full else 'final_evaluation'
+        status['phase'] = 'awaiting_final_evaluation' if full and not smoke else 'final_evaluation'
         (result / 'status.json').write_text(json.dumps(status, indent=2))
-        if not full:
+        if smoke:
+            from full_evaluate import evaluate_task
+            metrics = evaluate_task(home, result / 'final_eval' / suite['tasks'][0]['id'],
+                                    images['eval'], suite['tasks'][0])
+            metrics.update(benchmark='deepswe_smoke', smoke_test=True, num_tasks=1,
+                           held_out_evaluation=True, full_suite_score=False)
+            (result / 'metrics.json').write_text(json.dumps(metrics, indent=2) + '\n')
+        elif not full:
             final_evaluation(result, home)
         (result / 'final_model').symlink_to(task / 'final_model', target_is_directory=True)
-        status['status'] = 'training_completed' if full else 'completed'
+        status['status'] = 'training_completed' if full and not smoke else 'completed'
     except Exception as error:
         status.update(status='infrastructure_or_training_failure', error=str(error))
         raise

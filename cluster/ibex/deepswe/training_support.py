@@ -30,7 +30,8 @@ def make_prompt(base, train_seconds, mode=EXPERIMENT_MODE):
 
 
 def make_general_prompt(base, train_seconds):
-    full = os.environ.get('DEEPSWE_MODE') == 'full'
+    smoke = os.environ.get('DEEPSWE_MODE') == 'smoke'
+    full = os.environ.get('DEEPSWE_MODE') in ('full', 'smoke')
     prompt = subprocess.check_output([sys.executable,
         str(ROOT / 'src/eval/general/get_prompt.py'), '--agent', 'codex',
         '--model-to-train', base, '--benchmark-id', 'deepswe' if full else 'deepswe_smoke',
@@ -42,7 +43,13 @@ def make_general_prompt(base, train_seconds):
     # The standard generator includes this section when the task has test_data.json.
     # DeepSWE derives the same checker reference from its vendored instruction.
     if full:
-        return prompt + '\n' + (ROOT / 'src/eval/tasks/deepswe/prompt.txt').read_text()
+        prompt += '\n' + (ROOT / 'src/eval/tasks/deepswe/prompt.txt').read_text()
+        if smoke:
+            prompt = prompt.replace('Datacurve DeepSWE (all 113 held-out test tasks)', 'Datacurve DeepSWE (one held-out smoke-test task)')
+            prompt = prompt.replace('Full-suite protocol: all 113 Datacurve DeepSWE tasks are held-out tests.', 'Smoke protocol: evaluate one fixed held-out task from the 113-task DeepSWE suite. All 113 tasks remain forbidden training data.')
+            prompt = prompt.replace('all 113. --max-tokens', 'the one configured smoke task. Only --limit 1 or -1 is supported. --max-tokens')
+            prompt = prompt.replace('Independent judges and the complete final evaluation execute after training.', 'Independent judges and the one-task final evaluation execute after training. This smoke score is not a full-suite benchmark score.')
+        return prompt
     if '## Decontamination Tool' not in prompt:
         prompt += ('\nThe held-out test_data.json at ../test_data.json is ONLY input to '
             '../contamination_check.py, not training data. Reading and running these two files '

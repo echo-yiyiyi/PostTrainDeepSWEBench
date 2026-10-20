@@ -487,8 +487,9 @@ for future use.
 
 - `src/eval/tasks/deepswe/`: full-suite metadata, prompt supplement/preview, policies,
   model profiles and host-only evaluation implementation; all 113 tasks remain test data.
-- `src/eval/tasks/deepswe_smoke/`: smoke metadata, task selection in `config.py`,
-  teaching prompts and explicitly exposed reference material in `task_context/`.
+- `src/eval/tasks/deepswe_smoke/`: one-hour Qwen3.5 held-out smoke metadata and prompt preview.
+  `config.py`, teaching prompts and `task_context/` are retained legacy artifacts;
+  the current launcher uses the first host-manifest task and exposes no test material.
 - `cluster/ibex/deepswe/`: Slurm job scripts, preparation and training orchestration.
 - `src/commit_utils/commit_deepswe*.sh`: stable submission entry points.
 - `src/judges/deepswe/`: Ibex process adapter for the shared judges.

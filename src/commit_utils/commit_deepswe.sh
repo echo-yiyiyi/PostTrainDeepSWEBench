@@ -11,7 +11,7 @@ if [[ "${1:-}" == --dry-run ]]; then
     echo "Model: Qwen/Qwen3.5-9B; results: $DEEPSWE_STORAGE_RESULTS/deepswe; account: $account"
     exit 0
 fi
-for file in "$DEEPSWE_STORAGE_IMAGES/qwen35.sif" "$DEEPSWE_STORAGE_IMAGES/deepswe_manifest.json" "$DEEPSWE_STORAGE_IMAGES/qwen35_ready.json"; do
+for file in "$DEEPSWE_STORAGE_IMAGES/qwen35_v032.sif" "$DEEPSWE_STORAGE_IMAGES/deepswe_manifest.json" "$DEEPSWE_STORAGE_IMAGES/qwen35_v032_ready.json"; do
     [[ -f "$file" ]] || { echo "Missing preparation/validation artifact: $file" >&2; exit 1; }
 done
 python3 cluster/ibex/deepswe/check_full_ready.py

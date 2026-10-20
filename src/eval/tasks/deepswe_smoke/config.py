@@ -1,4 +1,4 @@
-"""Single-task teaching experiment selection and agent protocol."""
+"""Legacy teaching-task selection and shared agent protocol; current smoke uses the host manifest."""
 
 TASK_ID = 'happy-dom-abort-pending-body-reads'
 TASK_DIRECTORY = 'happy_dom_task'

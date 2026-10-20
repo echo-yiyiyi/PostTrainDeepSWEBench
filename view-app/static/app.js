@@ -19,13 +19,14 @@ function payload(label,text,depth=0,hint='') {
 function tab(name) {document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active',b.dataset.tab===name));['overview','trace','evaluation','files'].forEach(id=>$(id).hidden=id!==name);}
 function renderRuns() {const query=$('run-search').value.toLowerCase();const rows=state.runs.filter(r=>r.id.toLowerCase().includes(query));$('runs').innerHTML=rows.map(r=>`<button data-run="${esc(r.id)}" class="${state.run===r.id?'active':''}"><small>${esc(r.group)}</small>${esc(r.name)}</button>`).join('')||'<p class="muted">没有匹配的实验。可用 --results-dir 指定结果目录。</p>';$('runs').querySelectorAll('button').forEach(b=>b.onclick=safe(()=>selectRun(b.dataset.run)));}
 async function loadRuns() {$('error').hidden=true;const data=await api('runs');state.runs=data.runs;$('root').textContent=data.root;renderRuns();if(state.runs.length){const selected=state.runs.find(r=>r.id===state.run)||state.runs[0];await selectRun(selected.id);}}
-async function selectRun(id) {evaluationRequest++;evaluationLoaded.clear();$('eval-calls').innerHTML='';$('eval-source').innerHTML='';state.run=id;const generation=++state.generation;state.offset=0;state.fileRequest++;state.traceRequest++;state.summary=null;$('error').hidden=true;renderRuns();$('title').textContent=state.runs.find(r=>r.id===id)?.name||id;$('subtitle').textContent=id;['overview','events','tree'].forEach(x=>$(x).innerHTML='<p class="muted">加载中…</p>');$('preview').innerHTML='<div class="empty">选择文件查看内容</div>';const data=await api('summary');if(generation!==state.generation)return;state.summary=data;renderOverview();$('trace-source').innerHTML=data.traces.map(p=>`<option value="${esc(p)}">${esc(p)}</option>`).join('');$('eval-source').innerHTML=data.evaluations.map(e=>`<option value="${esc(e.path)}">${esc(e.phase)} · ${esc(e.path)}</option>`).join('');await Promise.all([loadTrace(),loadTree(),loadEvaluation()]);}
+async function selectRun(id) {cancelEvaluationExpansion();evaluationRequest++;evaluationLoaded.clear();$('eval-calls').innerHTML='';$('eval-source').innerHTML='';state.run=id;const generation=++state.generation;state.offset=0;state.fileRequest++;state.traceRequest++;state.summary=null;$('error').hidden=true;renderRuns();$('title').textContent=state.runs.find(r=>r.id===id)?.name||id;$('subtitle').textContent=id;['overview','events','tree'].forEach(x=>$(x).innerHTML='<p class="muted">加载中…</p>');$('preview').innerHTML='<div class="empty">选择文件查看内容</div>';const data=await api('summary');if(generation!==state.generation)return;state.summary=data;renderOverview();$('trace-source').innerHTML=data.traces.map(p=>`<option value="${esc(p)}">${esc(p)}</option>`).join('');$('eval-source').innerHTML=data.evaluations.map(e=>`<option value="${esc(e.path)}">${esc(e.phase)} · ${esc(e.path)}</option>`).join('');await Promise.all([loadTrace(),loadTree(),loadEvaluation()]);}
 function renderOverview() {const docs=state.summary.documents;const metrics=docs['metrics_averaged_exact_match.json']||docs['metrics_averaged.json']||docs['metrics.json'];let cards='';const status=docs['status.json']?.json?.status;cards+=`<div class="card"><small>运行状态</small><b>${esc(status|| (metrics?'已有指标':'未记录'))}</b></div>`;cards+=`<div class="card"><small>Agent 执行时间</small><b>${esc(docs['time_taken.txt']?.text.trim()||'—')}</b></div>`;for(const [key,value] of Object.entries(metrics?.json||{})){if(typeof value==='number')cards+=`<div class="card"><small>${esc(key)}</small><b>${Number.isInteger(value)?value:Number(value.toFixed(5))}</b></div>`;}
 $('overview').innerHTML=`<div class="cards">${cards}</div><div class="note">工作目录：${esc(state.summary.workspaces.join(' · ')||'尚未保存')}。这里展示的是已保存的产物；标准流程中的 task 为清理后的快照。指标按源文件显示，未在此重新计算 judge 回退得分。</div><h2>实验记录与评估</h2>`+Object.entries(docs).map(([name,data])=>`<details class="doc"><summary>${esc(name)}${data.error?' · 读取提示':''}</summary><div class="content">${data.error?code(data.error):''}${payload('内容',data.text||'')}${data.more?'<p class="muted">概览仅展示前 256 KB；可在文件浏览中继续阅读。</p>':''}</div></details>`).join('');}
 async function loadTrace() {const request=++state.traceRequest;const path=$('trace-source').value;if(!path){$('events').innerHTML='<div class="empty">这次实验还没有保存轨迹。</div>';$('trace-count').textContent='0 个事件';$('prev').disabled=$('next').disabled=true;return;}$('events').innerHTML='<p class="muted">解析轨迹中…</p>';const data=await api('trace',{path,offset:state.offset,search:$('trace-search').value,kind:$('kind').value});if(request!==state.traceRequest)return;$('trace-count').textContent=`${data.total?state.offset+1:0}–${Math.min(state.offset+100,data.total)} / ${data.total} 个事件 · 全部 ${data.all_total}`;$('prev').disabled=state.offset===0;$('next').disabled=state.offset+100>=data.total;
 $('events').innerHTML=data.events.map((e,i)=>`<details class="event ${esc(e.kind)}"><summary><span class="type">${esc(e.kind)}</span><span class="snippet">${esc(pretty(e.title))} ${esc(e.body.replace(/\s+/g,' ').slice(0,160))}</span><span class="badge">${esc(e.status)}</span><time>${esc(e.timestamp)} · L${e.line}</time></summary><div class="content" data-event="${i}"></div></details>`).join('')||'<div class="empty">没有匹配的事件</div>';
 $('events').querySelectorAll('details.event').forEach((el,i)=>el.ontoggle=()=>{if(!el.open||el.dataset.loaded)return;el.dataset.loaded='1';const e=data.events[i];el.querySelector('.content').innerHTML=(e.body?payload(e.kind==='tool'?'输入 / 参数':'内容',e.body,0,e.kind==='tool'&&(/command_execution|exec_command|shell|bash/i.test(pretty(e.raw))||/^\/?(?:usr\/)?bin\/(?:ba)?sh/.test(String(e.title)))?'bash':''):'')+(e.output?payload('工具输出',e.output):'')+`<details class="raw"><summary>原始事件 JSON (${e.raw.length})</summary>${code(pretty(e.raw),'json')}</details>`;});}
-let evaluationRequest=0;
+let evaluationRequest=0, evaluationExpandToken=0;
+function cancelEvaluationExpansion() {evaluationExpandToken++;$('eval-expand').disabled=false;$('eval-expand-status').textContent='';}
 const evaluationLoaded=new Map();
 function parseToolArguments(value) {
   if(typeof value!=='string')return {value, warning:value===null||typeof value!=='object'?'工具参数不是对象':''};
@@ -97,6 +98,7 @@ function renderEvaluationCall(content,call) {
   input.ontoggle=()=>{if(input.open&&!input.dataset.loaded){input.dataset.loaded='true';input.querySelector('.content').innerHTML=inputs.length?evalMessageList(inputs):payload('输入',call.input);}};
 }
 async function loadEvaluation() {
+  cancelEvaluationExpansion();
   const request=++evaluationRequest,generation=state.generation,path=$('eval-source').value;
   evaluationLoaded.clear();
   $('eval-calls').innerHTML='';
@@ -106,8 +108,11 @@ async function loadEvaluation() {
   if(request!==evaluationRequest||generation!==state.generation)return;
   $('eval-description').textContent=`${data.calls.length} 次模型回复 · ${data.description}。工具调用与返回按 ID 合并，可切换原始 JSON 检查格式异常。`;
   $('eval-calls').innerHTML=data.calls.map(c=>`<details class="doc eval-call"><summary>第 ${c.index+1} 轮 ${c.sample?'· '+esc(c.sample):''} · ${esc(c.preview.replace(/\s+/g,' '))}</summary><div class="content"></div></details>`).join('')||'<div class="empty">此记录没有模型调用；可能只包含评分或评测未完成。</div>';
-  $('eval-calls').querySelectorAll('.eval-call').forEach((el,index)=>el.ontoggle=safe(async()=>{
+  $('eval-calls').querySelectorAll('.eval-call').forEach((el,index)=>{
+    el.loadCall=()=>{
+    if(el.pending)return el.pending;
     if(!el.open||el.dataset.loaded)return;
+    el.pending=(async()=>{
     el.dataset.loaded='loading';
     const content=el.querySelector('.content');content.textContent='加载本轮对话…';
     try{
@@ -117,8 +122,32 @@ async function loadEvaluation() {
       renderEvaluationCall(content,call);
       el.dataset.loaded='true';
     }catch(e){delete el.dataset.loaded;content.textContent=e.message;}
-  }));
+    })().finally(()=>{el.pending=null;});
+    return el.pending;
+    };
+    el.ontoggle=safe(el.loadCall);
+  });
 }
+$('eval-expand').onclick=safe(async()=>{
+  const token=++evaluationExpandToken;
+  const calls=Array.from($('eval-calls').querySelectorAll('.eval-call'));
+  $('eval-expand').disabled=true;
+  try {
+    for(let i=0;i<calls.length;i++){
+      if(token!==evaluationExpandToken)return;
+      const el=calls[i];el.open=true;
+      await el.loadCall();
+      if(token!==evaluationExpandToken)return;
+      el.querySelectorAll('.event').forEach(event=>event.open=true);
+      $('eval-expand-status').textContent=`已展开 ${i+1} / ${calls.length} 轮`;
+      await new Promise(resolve=>setTimeout(resolve,0));
+    }
+  } finally {if(token===evaluationExpandToken)$('eval-expand').disabled=false;}
+});
+$('eval-collapse').onclick=()=>{
+  cancelEvaluationExpansion();
+  $('eval-calls').querySelectorAll('details').forEach(el=>el.open=false);
+};
 $('eval-source').onchange=safe(loadEvaluation);
 $('eval-format').onchange=()=>{for(const [content,call] of evaluationLoaded)if(content.isConnected)renderEvaluationCall(content,call);};
 function fileIcon(name,directory=false) {
@@ -184,4 +213,4 @@ async function openFile(path,offset=0,scope=state.fileScope) {
     $('trace-source').value=source;state.offset=0;tab('trace');await loadTrace();
   });
 }
-document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>tab(b.dataset.tab));$('run-search').oninput=renderRuns;$('refresh').onclick=safe(loadRuns);$('trace-source').onchange=$('kind').onchange=safe(()=>{state.offset=0;return loadTrace();});let timer;$('trace-search').oninput=()=>{clearTimeout(timer);timer=setTimeout(safe(()=>{state.offset=0;return loadTrace();}),300);};$('prev').onclick=safe(()=>{state.offset=Math.max(0,state.offset-100);return loadTrace();});$('next').onclick=safe(()=>{state.offset+=100;return loadTrace();});$('expand').onclick=()=>document.querySelectorAll('details.event').forEach(e=>e.open=true);$('collapse').onclick=()=>document.querySelectorAll('details.event').forEach(e=>e.open=false);$('file-root').onclick=safe(()=>loadTree('artifacts'));$('file-task').onclick=safe(()=>loadTree('workspace'));document.addEventListener('click',safe(async event=>{if(event.target.matches('.copy')){await navigator.clipboard.writeText(event.target.parentElement.nextElementSibling.querySelector('code').textContent);event.target.textContent='已复制';}}));safe(loadRuns)();
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>tab(b.dataset.tab));$('run-search').oninput=renderRuns;$('refresh').onclick=safe(loadRuns);$('trace-source').onchange=$('kind').onchange=safe(()=>{state.offset=0;return loadTrace();});let timer;$('trace-search').oninput=()=>{clearTimeout(timer);timer=setTimeout(safe(()=>{state.offset=0;return loadTrace();}),300);};$('prev').onclick=safe(()=>{state.offset=Math.max(0,state.offset-100);return loadTrace();});$('next').onclick=safe(()=>{state.offset+=100;return loadTrace();});$('expand').onclick=()=>$('events').querySelectorAll('details.event').forEach(e=>e.open=true);$('collapse').onclick=()=>$('events').querySelectorAll('details').forEach(e=>e.open=false);$('file-root').onclick=safe(()=>loadTree('artifacts'));$('file-task').onclick=safe(()=>loadTree('workspace'));document.addEventListener('click',safe(async event=>{if(event.target.matches('.copy')){await navigator.clipboard.writeText(event.target.parentElement.nextElementSibling.querySelector('code').textContent);event.target.textContent='已复制';}}));safe(loadRuns)();

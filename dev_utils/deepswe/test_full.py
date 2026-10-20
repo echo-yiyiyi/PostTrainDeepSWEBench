@@ -33,6 +33,18 @@ class FullTests(unittest.TestCase):
         self.assertIn('uv pip install --python /home/ben/.venv/bin/python', prompt)
         self.assertNotIn('only after training', prompt)
 
+    def test_qwen35_smoke_uses_full_policy_without_teaching_material(self):
+        with patch.dict(os.environ, DEEPSWE_MODE='smoke'):
+            prompt = make_general_prompt(QWEN35_ID, 3600)
+        self.assertEqual(prompt.strip(), (ROOT / 'src/eval/tasks/deepswe_smoke/prompt.preview.txt').read_text().strip())
+        self.assertIn('maximum of 1.0 hours', prompt)
+        self.assertIn('Qwen/Qwen3.5-9B', prompt)
+        self.assertIn('Trajectory Judge Agent', prompt)
+        self.assertIn('one fixed held-out task', prompt)
+        self.assertNotIn('reference_materials/', prompt)
+        self.assertNotIn('Abort pending body reads', prompt)
+        self.assertNotIn('final evaluation covers all 113', prompt)
+
     def test_api_judge_same_policy_and_original_unchanged(self):
         template = (ROOT / 'src/judges/api_usage_judge/prompt.md').read_text()
         full = fill_api_usage(template, 'deepswe', 'codex', 'gpt-6-sol')
@@ -80,6 +92,11 @@ class FullTests(unittest.TestCase):
             self.assertIn('qwen3_coder', args)
             self.assertIn('--language-model-only', args)
             self.assertNotIn('hermes', args)
+            kwargs = json.loads(args[args.index('--default-chat-template-kwargs') + 1])
+            self.assertIs(kwargs['enable_thinking'], True)
+            old = serving_args(QWEN35_ID, p, enable_thinking=False)
+            self.assertIs(json.loads(old[old.index('--default-chat-template-kwargs') + 1])
+                          ['enable_thinking'], False)
 
     def test_training_eval_client_help_and_limits(self):
         client = str(ROOT / 'src/eval/tasks/deepswe/evaluate.py')

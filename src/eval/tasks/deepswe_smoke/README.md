@@ -1,3 +1,24 @@
+# Current smoke: Qwen3.5-9B, one hour, held-out test
+
+`commit_deepswe_smoke.sh` now runs the full benchmark's model and seed-refinement
+policy for 3600 seconds, with one fixed task (the first in the pinned host manifest)
+for trial and final evaluation. It does not expose task questions, reference
+solutions or tests to Codex. See `prompt.preview.txt` for the complete one-hour
+prompt. The full suite remains excluded from training data.
+
+Resources remain one A100, 8 CPUs, 64 GB RAM and a 90-minute allocation including
+setup/judges/final evaluation. Only the training phase has a one-hour budget;
+post-training phases must fit the remaining allocation. The launcher refuses submission until the Qwen3.5 image has passed training,
+32K-context inference/tool use and the real mini-swe/separate-verifier checks.
+There is no dependency-based bypass. Startup also checks the ready marker and pinned cache. This produces a one-task smoke score,
+never a full 113-task benchmark score.
+
+The teaching prompts, `config.py` and reference material below are retained for
+historical runs and legacy reevaluation; the current smoke launcher does not
+copy them into its training sandbox.
+
+## Historical teaching smoke documentation
+
 # DeepSWE post-training on Ibex
 
 Canonical names: **deepswe_smoke** is the single-task teaching/debug mode;

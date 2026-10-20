@@ -37,21 +37,25 @@ The designated initial checkpoint is **Qwen/Qwen3.5-9B**, revision
 not a fictional Qwen3.5-9B-Base). We retain the complete multimodal architecture
 while training/evaluating on text. Its native pinned chat template is
 `src/eval/templates/qwen3_5.jinja`, with `qwen3_coder` tool parsing and thinking
-disabled. Do not substitute the Qwen3 JSON-tool template. The dedicated image
-uses vLLM 0.17.1 and Transformers 5.2.0; the older images are untouched.
+enabled. Do not substitute the Qwen3 JSON-tool template. The dedicated image
+uses vLLM 0.32.0 (CUDA 12.9) and Transformers 5.19.0; the older images are untouched.
 Final evaluation uses 32768 context tokens and 4000 output tokens per call,
 overriding only the checkpoint's output-length default.
 
 The prompt is generated from the normal PostTrainBench template. Full-mode
 changes are: aggregate-only training trial feedback, the designated Qwen3.5 checkpoint,
 actual Slurm GPU information, and the explicitly requested external-API policy.
-**Codex may serve as the synthetic-data pipeline agent**: design, implement,
-execute and debug the pipeline, and author examples in its own agent work.
-Small auxiliary API calls for pipeline checks and non-generative data processing
-are allowed and must be logged in `external_api_usage.jsonl`. Bulk hosted teacher
-completions (answers, patches, reasoning chains, trajectories, labels or rewards)
-for distillation are prohibited. Both training prompt and API judge import the
-same `api_policy.py`. Ordinary benchmark API policies remain unchanged.
+**Codex may serve as the synthetic-data pipeline agent**. Idea,
+Datapoint and Trajectory Judge are optional examples, not required roles or
+workflow stages; using external LLMs or synthesizing tasks is not mandatory.
+These examples illustrate how to refine sourced real-problem seeds, prepare
+runnable task scaffolding and filter tasks with evidenced design defects.
+Agent-authored reference implementations are validation assets, never training
+targets. Task prompts may seed local-model rollouts and executable tests may
+check them; LLM-produced answers, trajectories, preference labels and per-rollout
+rewards may not become distillation data. Limited auxiliary calls must be logged
+with seed provenance in `external_api_usage.jsonl`. Both training prompt and API
+judge import the same `api_policy.py`; ordinary benchmark policies are unchanged.
 
 Preparation (reads paths and credentials from this checkout's `.env`):
 
@@ -65,7 +69,7 @@ sbatch --account=conf-cvpr-2026.11.23-ghanembs --gres=gpu:a100:1 \
 This caches all model shards and processor/tokenizer assets under configured
 `HF_HOME`, records the 113 host-only tasks and their file hashes, builds a candidate
 image, and gates activation on a real 9B LoRA update/export and native vLLM tool
-call. `qwen35_ready.json` is written only after these checks pass. Existing active
+call. `qwen35_v032_ready.json` is written only after these checks pass. Existing active
 images are never overwritten. Task SIFs are pulled on demand into node-local
 storage by trial and final-evaluation jobs; caching 113 large images is not required.
 

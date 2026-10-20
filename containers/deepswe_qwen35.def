@@ -1,19 +1,40 @@
 Bootstrap: docker
-From: vllm/vllm-openai:v0.17.1
+From: vllm/vllm-openai:v0.32.0-cu129
+
+%files
+    containers/patches/check_qwen35_dependencies.py /opt/check_qwen35_dependencies.py
+    containers/patches/qwen35_requirements.txt /opt/qwen35_requirements.txt
 
 %post
     set -eu
     export DEBIAN_FRONTEND=noninteractive
+    # Singularity fakeroot builds can inherit a private temporary directory
+    # that the remapped _apt user cannot traverse. Keep signature verification
+    # enabled, but run apt's download helper as namespace root during the build.
+    mkdir -p /tmp /var/tmp
+    chmod 1777 /tmp /var/tmp
+    printf 'APT::Sandbox::User "root";\n' > /etc/apt/apt.conf.d/99deepswe-build
+    trap 'rm -f /etc/apt/apt.conf.d/99deepswe-build' EXIT
     apt-get update
     apt-get install -y curl git build-essential fuse-overlayfs uidmap
     curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
     apt-get install -y nodejs
     curl -LsSf https://astral.sh/uv/0.9.7/install.sh | sh
     export PATH="/root/.local/bin:$PATH"
-    uv pip install --system 'transformers==5.2.0' 'peft==0.18.1' 'accelerate==1.12.0' 'datasets==4.5.0' 'safetensors==0.7.0'
+    # These orphaned helpers belong to the newer telemetry series; the 1.40
+    # exporters use opentelemetry-exporter-otlp-proto-common instead.
+    uv pip uninstall --system opentelemetry-exporter-otlp-common opentelemetry-exporter-http-transport
+    uv pip install --system -r /opt/qwen35_requirements.txt
+    # DeepSWE uses text only. The base image's torchcodec wheel
+    # links CUDA 13 libraries despite this being the CUDA 12.9 image.
+    # Install the official CPU media decoder without replacing CUDA torch.
+    uv pip install --system --no-deps 'torchcodec==0.17.0+cpu' --index-url https://download.pytorch.org/whl/cpu
+    python3 -c 'from torchcodec.decoders import AudioDecoder; print("TorchCodec CPU import passed")'
+    python3 -c 'import tempfile; from transformers import Qwen3_5Config; from vllm.transformers_utils.config import get_config; d=tempfile.TemporaryDirectory(); Qwen3_5Config().save_pretrained(d.name); get_config(d.name, trust_remote_code=False); print("Qwen3.5 config round trip passed")'
+    python3 /opt/check_qwen35_dependencies.py
     npm install -g @openai/codex@0.137.0
     ln -sf "$(command -v python3)" /usr/bin/python
-    python3 -c 'import vllm,transformers,peft; from transformers import Qwen3_5ForConditionalGeneration; assert vllm.__version__ == "0.17.1"'
+    python3 -c 'import vllm,transformers,peft; from transformers import Qwen3_5ForConditionalGeneration; assert vllm.__version__ in ("0.32.0", "0.32.0+cu129")'
 
 %environment
     export PATH="/root/.local/bin:/usr/local/bin:$PATH"

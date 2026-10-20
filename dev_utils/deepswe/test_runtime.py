@@ -21,6 +21,22 @@ from runtime import Bridge, TaskEnvironment, container, resolve_checkpoint
 
 
 class RuntimeTests(unittest.TestCase):
+    def test_gpu_compiler_caches_use_private_disk_backed_home(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp) / 'home'
+            cmd = container(Path('model.sif'), home, gpu=True)
+            for value in ('TMPDIR=/home/ben/tmp', 'TRITON_CACHE_DIR=/home/ben/.cache/triton',
+                          'TORCHINDUCTOR_CACHE_DIR=/home/ben/.cache/torchinductor',
+                          'VLLM_CACHE_ROOT=/home/ben/.cache/vllm',
+                          'UV_CACHE_DIR=/home/ben/.cache/uv'):
+                self.assertIn(value, cmd)
+            self.assertTrue((home / '.cache/triton').is_dir())
+            self.assertTrue((home / '.cache/uv').is_dir())
+            self.assertTrue((home / 'tmp').is_dir())
+            override = container(Path('model.sif'), home, gpu=True, env={'TMPDIR':'/custom/tmp'})
+            self.assertIn('TMPDIR=/custom/tmp', override)
+            self.assertNotIn('TMPDIR=/home/ben/tmp', override)
+
     def test_initialized_repository_can_commit_without_global_identity(self):
         with tempfile.TemporaryDirectory() as tmp:
             directory = Path(tmp)

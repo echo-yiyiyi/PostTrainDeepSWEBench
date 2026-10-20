@@ -94,6 +94,24 @@ def cache_overlay(lower, directory):
 
 def container(image, home, binds=(), network=False, gpu=False, pwd='/tmp', env=None):
     home.mkdir(parents=True, exist_ok=True)
+    env = dict(env or {})
+    if gpu:
+        # Image /root and /tmp may be backed by Singularity's small session
+        # filesystem. Compilation artifacts need the disk-backed private home.
+        (home / 'tmp').mkdir(exist_ok=True)
+        for name in ('triton', 'torchinductor', 'vllm', 'cuda', 'uv'):
+            (home / '.cache' / name).mkdir(parents=True, exist_ok=True)
+        for key, value in {
+            'TMPDIR': '/home/ben/tmp',
+            'XDG_CACHE_HOME': '/home/ben/.cache',
+            # The vLLM image sets UV_CACHE_DIR=/opt/uv/cache (read-only in SIF).
+            'UV_CACHE_DIR': '/home/ben/.cache/uv',
+            'TRITON_CACHE_DIR': '/home/ben/.cache/triton',
+            'TORCHINDUCTOR_CACHE_DIR': '/home/ben/.cache/torchinductor',
+            'VLLM_CACHE_ROOT': '/home/ben/.cache/vllm',
+            'CUDA_CACHE_PATH': '/home/ben/.cache/cuda',
+        }.items():
+            env.setdefault(key, value)
     cmd = ['singularity', 'exec', '--fakeroot', '--containall', '--cleanenv', '--no-mount', 'hostfs',
            '--home', f'{home}:/home/ben', '--pwd', pwd, '--writable-tmpfs']
     if not network:
@@ -278,6 +296,7 @@ class Bridge:
             if training_config.exists():
                 trained = json.loads(training_config.read_text())
                 config['harness'] = trained.get('harness', 'legacy-json')
+                config['enable_thinking'] = trained.get('enable_thinking', False)
                 config['model_to_train'] = trained.get('model_to_train', 'Qwen/Qwen3-1.7B-Base')
             if config.get('model_to_train') == 'Qwen/Qwen3.5-9B':
                 config['gpu_memory_utilization'] = 0.8
@@ -338,7 +357,8 @@ class Bridge:
             # Enforce the evaluation budget while retaining all other defaults.
             '--override-generation-config', json.dumps({'max_new_tokens': config['max_tokens']}),
             '--gpu-memory-utilization', str(config['gpu_memory_utilization'])]
-        cmd += serving_args(config.get('model_to_train', 'Qwen/Qwen3-1.7B-Base'), ROOT / 'src/eval/templates')
+        cmd += serving_args(config.get('model_to_train', 'Qwen/Qwen3-1.7B-Base'), ROOT / 'src/eval/templates',
+                            enable_thinking=config.get('enable_thinking', True))
         base_url = f'http://127.0.0.1:{port}/v1'
         with (directory / 'vllm.log').open('w') as server_log:
             proc = subprocess.Popen(cmd, env=clean_env(), stdout=server_log,

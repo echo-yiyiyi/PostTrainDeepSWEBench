@@ -114,7 +114,7 @@ def main():
     else:
         result = result.replace('{eval_api_note}', "")
 
-    if args.benchmark_id == 'deepswe':
+    if args.benchmark_id in ('deepswe', 'deepswe_smoke'):
         import sys
         sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tasks/deepswe'))
         from api_policy import POLICY

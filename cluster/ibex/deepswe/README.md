@@ -4,7 +4,7 @@ This directory contains only cluster setup and orchestration. Benchmark metadata
 prompts, protocols and evaluation code live alongside the other evaluation tasks:
 
 - [deepswe](../../../src/eval/tasks/deepswe/README.md): all 113 held-out tasks, Qwen3.5-9B.
-- [deepswe_smoke](../../../src/eval/tasks/deepswe_smoke/README.md): single-task teaching/debug experiment.
+- [deepswe_smoke](../../../src/eval/tasks/deepswe_smoke/README.md): one-hour Qwen3.5 held-out smoke test (legacy teaching artifacts retained).
 
 Configure the repository-root `.env` using `example.env`. `common.sh` reads it
 without sourcing the Condor module setup. Model/image/result caches remain at
