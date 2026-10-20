@@ -189,10 +189,16 @@ The `evaluate.py` must:
 
 ## Running Jobs
 
-For this checkout, submit all Slurm jobs with the conference account
-`conf-cvpr-2026.11.23-ghanembs`, including image preparation and verifier checks.
-Allocate a GPU for those jobs too, as required by this account. Do not switch to
-`pi-ghanembs` for CPU-only work.
+For tests and checks that do not require a GPU, prefer CPU-only Slurm jobs under
+the regular account `pi-ghanembs` to avoid waiting for GPU resources. This includes
+file/command availability, network access, package installation and other CPU-only
+validation. Do not request a GPU merely to run these checks; shorter queue times
+are the goal, not a guarantee.
+
+For jobs that require a GPU, use the conference account
+`conf-cvpr-2026.11.23-ghanembs` and request the GPU resources actually needed.
+Choose the account for image preparation and verifier checks according to whether
+the specific check requires a GPU.
 
 ```bash
 # Submit the full agent × benchmark × model sweep (edit the loop / EXPERIMENT_NAME at the top)

@@ -16,7 +16,8 @@ if (ready.get('model') != QWEN35_ID or ready.get('revision') != QWEN35_REVISION
         or not ready.get('training_export') or not ready.get('native_tool_call')
         or not ready.get('end_to_end_evaluation') or ready.get('max_model_len') != 32768
         or ready.get('output_budget') != 4000 or ready.get('enable_thinking') is not True
-        or not ready.get('prompt_environment') or not ready.get('evaluation_client')):
+        or not ready.get('prompt_environment') or not ready.get('prompt_network')
+        or not ready.get('evaluation_client')):
     raise ValueError('Qwen3.5 image validation is missing or mismatched')
 if ready.get('versions', {}).get('vllm') not in ('0.32.0', '0.32.0+cu129') or ready.get('versions', {}).get('transformers') != '5.19.0':
     raise ValueError('The upgraded training/evaluation stack has not passed its GPU gate')

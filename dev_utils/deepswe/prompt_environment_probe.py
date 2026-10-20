@@ -13,14 +13,27 @@ from transformers import Qwen3_5ForConditionalGeneration
 task = Path('/home/ben/task')
 assert Path.cwd() == task
 assert sys.prefix == '/home/ben/.venv'
-for name in ('evaluate.py', 'timer.sh', 'model_profile.json',
+required_files = ('evaluate.py', 'timer.sh', 'model_profile.json',
              'templates/qwen3_5.jinja', 'mini_swe_bash_tool.json',
-             'mini_swe_config.yaml', 'evaluation_config.json'):
-    assert (task / name).is_file(), name
+             'mini_swe_config.yaml', 'evaluation_config.json')
+file_checks = {}
+for name in required_files:
+    path = task / name
+    file_checks[name] = path.is_file() and os.access(path, os.R_OK)
+    assert file_checks[name], name
 profile = json.loads((task / 'model_profile.json').read_text())
 assert profile['enable_thinking'] is True
 source = Path(profile['cached_model'])
 assert source.name == profile['revision']
+assert source.is_dir(), source
+index = source / 'model.safetensors.index.json'
+if index.is_file():
+    weights = sorted(set(json.loads(index.read_text())['weight_map'].values()))
+else:
+    weights = ['model.safetensors']
+for name in weights:
+    path = source / name
+    assert path.is_file() and os.access(path, os.R_OK), path
 config = AutoConfig.from_pretrained(source, local_files_only=True)
 tokenizer = AutoTokenizer.from_pretrained(source, local_files_only=True)
 schema = json.loads((task / 'mini_swe_bash_tool.json').read_text())
@@ -33,9 +46,12 @@ rendered = tokenizer.apply_chat_template(
     add_generation_prompt=True, enable_thinking=True)
 assert rendered.rstrip().endswith('<think>'), rendered[-200:]
 assert os.access(task, os.W_OK)
-for command in (['bash', 'timer.sh'], ['nvidia-smi', '-L'],
-                ['codex', '--version'], ['git', '--version'],
-                ['python', 'evaluate.py', '--help']):
+cpu_only = '--cpu-only' in sys.argv
+commands = [['bash', 'timer.sh'], ['codex', '--version'], ['git', '--version'],
+            ['python', 'evaluate.py', '--help']]
+if not cpu_only:
+    commands.append(['nvidia-smi', '-L'])
+for command in commands:
     subprocess.run(command, check=True)
 
 # Exercise a real offline install, not just --help or a mocked package manager.
@@ -58,5 +74,12 @@ assert not (task / 'reference_materials').exists()
     'passed': True, 'enable_thinking': True, 'model_type': config.model_type,
     'cached_model_readable': True, 'offline_package_install': True,
     'template_render': True, 'files_present': True,
+    'required_files': file_checks, 'cached_weight_files': weights,
+    'output_paths': {
+        'final_model/': 'created by training; not required at startup',
+        'trial_metrics.json': 'created by evaluation; not required at startup',
+        'external_api_usage.jsonl': 'creation verified by this probe',
+    },
     'cli_commands': True, 'held_out_files_absent': True,
+    'gpu_check': 'skipped (CPU-only probe)' if cpu_only else 'passed',
 }, indent=2))

@@ -89,6 +89,9 @@ def main():
         train_seconds = min(train_seconds, 3600)
     if train_seconds <= 0:
         raise ValueError("DEEPSWE_TRAIN_SECONDS must be positive")
+    num_gpus = int(os.environ.get('SLURM_GPUS_ON_NODE', '1'))
+    if num_gpus < 1:
+        raise ValueError("At least one GPU must be allocated")
     result = Path(os.environ['DEEPSWE_RESULTS']).resolve() / os.environ['SLURM_JOB_ID']
     result.mkdir(parents=True, exist_ok=False)
     home = result / 'training_home'
@@ -101,7 +104,7 @@ def main():
             raise FileNotFoundError(image)
     base = os.environ.get('DEEPSWE_BASE_MODEL', 'Qwen/Qwen3.5-9B' if full else 'Qwen/Qwen3-1.7B-Base')
     config = {'agent': 'codex', 'agent_config': 'gpt-6-sol', 'model_to_train': base,
-              'reasoning_effort': 'low', 'train_seconds': train_seconds,
+              'reasoning_effort': 'low', 'train_seconds': train_seconds, 'num_gpus': num_gpus,
               'slurm_walltime': os.environ.get('DEEPSWE_JOB_WALLTIME', '12:00:00' if full else '01:30:00'),
               'container_fakeroot': True,
               'benchmark': 'deepswe_smoke', 'num_tasks': 1, 'seed': 72332,
@@ -151,7 +154,7 @@ def main():
     prepare_training_home(home, modern=full)
     with (result / 'training_env.log').open('w') as log:
         run(container(images['train'], home, gpu=True, env={
-            **TRAIN_ENV, 'DEEPSWE_REQUIRE_CUDA': '1'}) +
+            **TRAIN_ENV, 'DEEPSWE_REQUIRE_CUDA': '1', 'DEEPSWE_EXPECT_GPUS': str(num_gpus)}) +
             ['bash', '/home/ben/setup_training_env.sh'], timeout=120, stdout=log)
     if full:
         from trial_bridge import TrialBridge
@@ -162,12 +165,14 @@ def main():
         bridge.start()
     prepare_protocol_files(home, base, full=full, num_tasks=len(suite['tasks']) if full else 1)
     prompt = make_prompt(base, train_seconds, mode='general' if full else EXPERIMENT_MODE)
+    if num_gpus > 1:
+        prompt += f'\nThis training job has {num_gpus} allocated GPUs. NUM_GPUS={num_gpus}; use nvidia-smi to inspect them. You may use all allocated GPUs for training.\n'
     (result / 'prompt.txt').write_text(prompt)
     (home / 'training_prompt.txt').write_text(prompt)
     cache = Path(os.environ['HF_HOME']).resolve()
     cache.mkdir(parents=True, exist_ok=True)
     env = {'AGENT_CONFIG': 'gpt-6-sol', 'CODEX_API_KEY': os.environ['OPENAI_API_KEY'],
-           'HF_HOME': '/home/ben/hf_cache', 'NUM_GPUS': '1', 'PYTHONNOUSERSITE': '1',
+           'HF_HOME': '/home/ben/hf_cache', 'NUM_GPUS': str(num_gpus), 'PYTHONNOUSERSITE': '1',
            **TRAIN_ENV}
     if bridge:
         env.update(DEEPSWE_EVAL_URL=bridge.url, DEEPSWE_EVAL_TOKEN=bridge.agent_token)

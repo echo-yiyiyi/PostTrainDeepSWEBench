@@ -11,6 +11,7 @@ export DEEPSWE_SUITE_MANIFEST="$DEEPSWE_STORAGE_IMAGES/deepswe_manifest.json"
 export DEEPSWE_CONTAINER_TMPDIR="$(mktemp -d /tmp/deepswe-full-${SLURM_JOB_ID}.XXXXXX)"
 trap 'rm -rf -- "$DEEPSWE_CONTAINER_TMPDIR"' EXIT
 if [[ "${1:-train}" == train ]]; then
+    python3 cluster/ibex/deepswe/check_full_ready.py
     python3 cluster/ibex/deepswe/run.py
 elif [[ "$1" == evaluate ]]; then
     python3 src/eval/tasks/deepswe/evaluate_final_eval.py "$2" --index "$SLURM_ARRAY_TASK_ID"

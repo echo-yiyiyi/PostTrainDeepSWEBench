@@ -109,10 +109,12 @@ with tempfile.TemporaryDirectory(dir=os.environ['DEEPSWE_CONTAINER_TMPDIR']) as 
             ['bash', '/home/ben/setup_training_env.sh'], timeout=180, stdout=log)
         with cache_overlay(Path(os.environ['HF_HOME']), tmp / 'prompt_cache') as cache:
             run(container(image, probe_home, [f'{cache}:/home/ben/hf_cache',
-                f'{ROOT / "dev_utils/deepswe/prompt_environment_probe.py"}:/audit.py:ro'],
-                gpu=True, pwd='/home/ben/task', env=TRAIN_ENV) +
-                ['python', '/audit.py'], timeout=300, stdout=log)
+                f'{ROOT / "dev_utils/deepswe/prompt_environment_probe.py"}:/audit.py:ro',
+                f'{ROOT / "dev_utils/deepswe/prompt_network_probe.py"}:/network_probe.py:ro'],
+                network=True, gpu=True, pwd='/home/ben/task', env=TRAIN_ENV) +
+                ['bash', '-c', 'python /audit.py && python /network_probe.py'], timeout=600, stdout=log)
     (report / 'prompt_environment.json').write_bytes((task / 'prompt_environment.json').read_bytes())
+    (report / 'prompt_network.json').write_bytes((task / 'prompt_network.json').read_bytes())
     # Run the exact prompt command through the real authenticated host bridge.
     bridge = TrialBridge(probe_home, report, {'train': image, 'eval': image}, suite)
     bridge.start()
@@ -137,6 +139,6 @@ with tempfile.TemporaryDirectory(dir=os.environ['DEEPSWE_CONTAINER_TMPDIR']) as 
     # not whether this deliberately tiny training update solves the task.
     (report / 'end_to_end.json').write_text(json.dumps(metrics, indent=2))
 (report / 'ready.json').write_text(json.dumps(dict(model=QWEN35_ID, revision=QWEN35_REVISION,
-    enable_thinking=True, prompt_environment=True, evaluation_client=True,
+    enable_thinking=True, prompt_environment=True, prompt_network=True, evaluation_client=True,
     validation_job_id=os.environ['SLURM_JOB_ID'], image=str(image), versions=json.loads((report / 'train_probe.json').read_text())['versions'], training_export=True, native_tool_call=True, end_to_end_evaluation=True, max_model_len=32768, output_budget=4000), indent=2))
 print('Qwen3.5 real-model training/export and vLLM tool-call checks passed.')

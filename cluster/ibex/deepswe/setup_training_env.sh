@@ -21,6 +21,10 @@ assert sys.prefix == '/home/ben/.venv', sys.executable
 assert os.access(sys.prefix, os.W_OK), 'Training virtual environment is not writable'
 if os.environ.get('DEEPSWE_REQUIRE_CUDA') == '1' and not torch.cuda.is_available():
     raise RuntimeError('Training GPU is unavailable')
+if 'DEEPSWE_EXPECT_GPUS' in os.environ:
+    expected = int(os.environ['DEEPSWE_EXPECT_GPUS'])
+    if torch.cuda.device_count() != expected:
+        raise RuntimeError(f'Expected {expected} GPUs, found {torch.cuda.device_count()}')
 packages = ('torch', 'transformers', 'accelerate', 'peft', 'datasets',
             'safetensors', 'tokenizers', 'numpy')
 versions = {name: importlib.metadata.version(name) for name in packages}
