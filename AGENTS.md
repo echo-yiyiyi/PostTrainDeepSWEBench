@@ -189,6 +189,17 @@ The `evaluate.py` must:
 
 ## Running Jobs
 
+For tests and checks that do not require a GPU, prefer CPU-only Slurm jobs under
+the regular account `pi-ghanembs` to avoid waiting for GPU resources. This includes
+file/command availability, network access, package installation and other CPU-only
+validation. Do not request a GPU merely to run these checks; shorter queue times
+are the goal, not a guarantee.
+
+For jobs that require a GPU, use the conference account
+`conf-cvpr-2026.11.23-ghanembs` and request the GPU resources actually needed.
+Choose the account for image preparation and verifier checks according to whether
+the specific check requires a GPU.
+
 ```bash
 # Submit the full agent × benchmark × model sweep (edit the loop / EXPERIMENT_NAME at the top)
 bash src/commit_utils/commit.sh
@@ -477,3 +488,21 @@ lot of api credits for openai.
 Add your own notes to the directory `/home/brank/Documents/agents_notes` and index them via
 `/home/brank/Documents/agents_notes/index.md`. Add those notes for other agents and for yourself
 for future use.
+
+## DeepSWE checkout layout
+
+- `src/eval/tasks/deepswe/`: full-suite metadata, prompt supplement/preview, policies,
+  model profiles and host-only evaluation implementation; all 113 tasks remain test data.
+- `src/eval/tasks/deepswe_smoke/`: one-hour Qwen3.5 held-out smoke metadata and prompt preview.
+  `config.py`, teaching prompts and `task_context/` are retained legacy artifacts;
+  the current launcher uses the first host-manifest task and exposes no test material.
+- `cluster/ibex/deepswe/`: Slurm job scripts, preparation and training orchestration.
+- `src/commit_utils/commit_deepswe*.sh`: stable submission entry points.
+- `src/judges/deepswe/`: Ibex process adapter for the shared judges.
+- Root `.env` / `example.env`: local configuration / public settings example.
+
+Do not put full-suite host evaluator modules in `evaluation_code/`: the generic
+launcher copies that directory into the training sandbox. Task prompts and tests
+must stay in the host-only external suite cache. Two forwards under `src/deepswe/`
+only support preparation job 54006896, spooled before the directory migration;
+new code must use the canonical directories above.

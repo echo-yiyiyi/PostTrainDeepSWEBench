@@ -1,0 +1,14 @@
+{
+  "benchmark": "Datacurve DeepSWE (all 113 held-out test tasks)",
+  "required_api_keys": [],
+  "api_usage_policy": "limited_pipeline_assistance",
+  "allowed_data_examples": [
+    "Independent software engineering examples synthesized by the training agent; independent public training data screened for contamination"
+  ],
+  "disallowed_data_examples": [
+    "All Datacurve DeepSWE task questions, reference solutions, tests, repositories at benchmark-specific revisions, and task-derived demonstrations"
+  ],
+  "held_out_evaluation": true,
+  "training_task_exposed": false,
+  "evaluation_timing": "training_trials_and_final"
+}

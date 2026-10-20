@@ -114,6 +114,16 @@ def main():
     else:
         result = result.replace('{eval_api_note}', "")
 
+    if args.benchmark_id in ('deepswe', 'deepswe_smoke'):
+        import sys
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tasks/deepswe'))
+        from api_policy import POLICY
+        lines = result.splitlines()
+        lines = ['9. ' + POLICY.strip() if line.startswith('9. You must NOT use any API key') else line for line in lines]
+        result = '\n'.join(lines)
+        result = result.replace('This means that it is forbidden to download an instruction tuned version of',
+            'Do not substitute another checkpoint or a different instruction-tuned variant of')
+
     result = result.replace('{datetime}', datetime)
 
     if 'claude' in args.agent:

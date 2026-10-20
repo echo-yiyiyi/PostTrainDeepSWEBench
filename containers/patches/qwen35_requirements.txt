@@ -1,0 +1,15 @@
+# Keep the training stack and the base image's optional KV connectors compatible.
+transformers==5.19.0
+peft==0.21.2
+accelerate==1.15.0
+datasets==5.1.0
+safetensors==0.8.0
+# LMCache caps the API at 1.40.0 and the Prometheus exporter at 0.61b0.
+opentelemetry-api==1.40.0
+opentelemetry-sdk==1.40.0
+opentelemetry-exporter-otlp==1.40.0
+opentelemetry-exporter-prometheus==0.61b0
+# Newer google-api-core pulls telemetry >=1.44, incompatible with LMCache.
+google-api-core==2.29.0
+# Also satisfy build helpers retained in the base image.
+packaging==26.2
