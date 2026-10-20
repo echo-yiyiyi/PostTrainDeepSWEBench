@@ -12,6 +12,7 @@ import tempfile
 import os
 from pathlib import Path
 import secrets
+import shlex
 import socket
 import signal
 import subprocess
@@ -119,7 +120,13 @@ def container(image, home, binds=(), network=False, gpu=False, pwd='/tmp', env=N
     if gpu:
         cmd += ['--nv']
         if 'CUDA_VISIBLE_DEVICES' in os.environ:
-            cmd += ['--env', 'CUDA_VISIBLE_DEVICES=' + os.environ['CUDA_VISIBLE_DEVICES']]
+            # Singularity 3.9 parses --env as CSV: 0,1 otherwise becomes 0.
+            # A per-invocation file also avoids races between evaluator launches.
+            with tempfile.NamedTemporaryFile(mode='w', prefix='.cuda-env-',
+                                             dir=home, delete=False) as env_file:
+                env_file.write('CUDA_VISIBLE_DEVICES=' +
+                               shlex.quote(os.environ['CUDA_VISIBLE_DEVICES']) + '\n')
+            cmd += ['--env-file', env_file.name]
     for bind in binds:
         cmd += ['--bind', bind]
     for key, value in (env or {}).items():

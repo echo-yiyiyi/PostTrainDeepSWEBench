@@ -21,6 +21,18 @@ from runtime import Bridge, TaskEnvironment, container, resolve_checkpoint
 
 
 class RuntimeTests(unittest.TestCase):
+    def test_multiple_gpu_ids_are_passed_without_csv_splitting(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for visible in ('0,1', '2,5', '0'):
+                with patch.dict(os.environ, CUDA_VISIBLE_DEVICES=visible):
+                    cmd = container('model.sif', Path(tmp), gpu=True)
+                env_file = Path(cmd[cmd.index('--env-file') + 1])
+                result = subprocess.check_output(
+                    ['bash', '-c', 'source "$1"; printf "%s" "$CUDA_VISIBLE_DEVICES"',
+                     'probe', str(env_file)], text=True)
+                self.assertEqual(result, visible)
+                self.assertNotIn('CUDA_VISIBLE_DEVICES=' + visible, cmd)
+
     def test_gpu_compiler_caches_use_private_disk_backed_home(self):
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp) / 'home'
