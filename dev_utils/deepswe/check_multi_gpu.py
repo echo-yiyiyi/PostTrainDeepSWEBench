@@ -1,5 +1,6 @@
 """Verify all allocated GPUs through the actual training container launcher."""
 import os
+import json
 from pathlib import Path
 import sys
 import tempfile
@@ -33,5 +34,17 @@ with tempfile.TemporaryDirectory(dir=os.environ['DEEPSWE_CONTAINER_TMPDIR']) as 
                         ['python', '-c', code], timeout=300)
         log.write(output)
         print(output)
-        (report / 'ready.json').write_text(next(line for line in output.splitlines()
-                                              if line.startswith('{"passed":')) + '\n')
+        ready = json.loads(next(line for line in output.splitlines()
+                                if line.startswith('{"passed":')))
+        # Use the same network setting as the actual training agent for torchrun.
+        _, output = run(container(image, home, [
+            f'{ROOT / "dev_utils/deepswe/multi_gpu_probe.py"}:/multi_gpu_probe.py:ro'],
+            gpu=True, network=True, env={**TRAIN_ENV, 'OMP_NUM_THREADS': '1'}) +
+            ['python', '-m', 'torch.distributed.run', '--standalone', '--nnodes=1',
+             '--nproc-per-node=2', '/multi_gpu_probe.py'], timeout=300)
+        log.write(output)
+        print(output)
+        distributed = json.loads(next(line for line in output.splitlines()
+                                      if line.startswith('{"passed":')))
+        ready.update(distributed)
+        (report / 'ready.json').write_text(json.dumps(ready, indent=2) + '\n')
